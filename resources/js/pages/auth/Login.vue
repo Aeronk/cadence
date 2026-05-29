@@ -15,8 +15,9 @@ import { request } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Log in to your account',
-        description: 'Enter your email and password below to log in',
+        title: 'Welcome back',
+        description: 'Sign in to continue to your workspace.',
+        variant: 'split',
     },
 });
 

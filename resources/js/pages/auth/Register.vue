@@ -16,8 +16,9 @@ defineProps<{
 
 defineOptions({
     layout: {
-        title: 'Create an account',
-        description: 'Enter your details below to create your account',
+        title: 'Create your workspace',
+        description: 'Free, no credit card. Your personal workspace is ready in seconds.',
+        variant: 'split',
     },
 });
 </script>
