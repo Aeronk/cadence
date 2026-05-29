@@ -3,15 +3,19 @@
 namespace App\Integrations\Providers\Microsoft;
 
 use App\Enums\MessageChannel;
+use App\Integrations\Contracts\CalendarProvider;
 use App\Integrations\Contracts\EmailProvider;
 use App\Integrations\Contracts\OAuthProvider;
+use App\Models\CalendarEvent;
 use App\Models\IntegrationAccount;
+use App\Models\Meeting;
 use App\Models\Message;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-class MicrosoftProvider implements EmailProvider, OAuthProvider
+class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvider
 {
     private const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -183,6 +187,156 @@ class MicrosoftProvider implements EmailProvider, OAuthProvider
                 'clientState' => 'cadence-'.$account->id,
             ])
             ->throw();
+    }
+
+    public function syncEvents(IntegrationAccount $account): int
+    {
+        $this->ensureValidToken($account);
+
+        $persisted = 0;
+        $url = $account->sync_cursor
+            ?: self::GRAPH_BASE.'/me/calendar/events/delta?$select=id,subject,bodyPreview,location,start,end,attendees,isCancelled';
+
+        $deltaLink = null;
+
+        do {
+            $response = Http::withToken($account->access_token)->get($url)->throw()->json();
+
+            foreach (($response['value'] ?? []) as $event) {
+                if (! isset($event['id'])) {
+                    continue;
+                }
+
+                if (! empty($event['isCancelled']) || ($event['@removed']['reason'] ?? null) === 'changed') {
+                    CalendarEvent::query()
+                        ->where('integration_account_id', $account->id)
+                        ->where('external_id', $event['id'])
+                        ->delete();
+                    continue;
+                }
+
+                CalendarEvent::query()->updateOrCreate(
+                    ['integration_account_id' => $account->id, 'external_id' => $event['id']],
+                    [
+                        'workspace_id' => $account->workspace_id,
+                        'title' => $event['subject'] ?? '(no title)',
+                        'description' => $event['bodyPreview'] ?? null,
+                        'location' => $event['location']['displayName'] ?? null,
+                        'starts_at' => isset($event['start']['dateTime']) ? CarbonImmutable::parse($event['start']['dateTime']) : null,
+                        'ends_at' => isset($event['end']['dateTime']) ? CarbonImmutable::parse($event['end']['dateTime']) : null,
+                        'attendees' => collect($event['attendees'] ?? [])
+                            ->pluck('emailAddress.address')->filter()->values()->all(),
+                        'sync_status' => 'synced',
+                    ]
+                );
+
+                $persisted++;
+            }
+
+            $url = $response['@odata.nextLink'] ?? null;
+            $deltaLink = $response['@odata.deltaLink'] ?? $deltaLink;
+        } while ($url);
+
+        $account->forceFill([
+            'last_synced_at' => now(),
+            'sync_cursor' => $deltaLink ?: $account->sync_cursor,
+            'last_error' => null,
+        ])->save();
+
+        return $persisted;
+    }
+
+    public function createEvent(IntegrationAccount $account, Meeting $meeting): CalendarEvent
+    {
+        $this->ensureValidToken($account);
+
+        $response = Http::withToken($account->access_token)
+            ->post(self::GRAPH_BASE.'/me/events', $this->meetingPayload($meeting))
+            ->throw()
+            ->json();
+
+        return CalendarEvent::query()->updateOrCreate(
+            ['integration_account_id' => $account->id, 'external_id' => $response['id']],
+            [
+                'workspace_id' => $account->workspace_id,
+                'meeting_id' => $meeting->id,
+                'title' => $meeting->title,
+                'description' => $meeting->description,
+                'location' => $meeting->location,
+                'starts_at' => $meeting->starts_at,
+                'ends_at' => $meeting->ends_at,
+                'attendees' => $meeting->attendees()->pluck('email')->all(),
+                'sync_status' => 'synced',
+            ]
+        );
+    }
+
+    public function updateEvent(IntegrationAccount $account, CalendarEvent $event, Meeting $meeting): CalendarEvent
+    {
+        $this->ensureValidToken($account);
+
+        Http::withToken($account->access_token)
+            ->patch(self::GRAPH_BASE.'/me/events/'.$event->external_id, $this->meetingPayload($meeting))
+            ->throw();
+
+        $event->forceFill([
+            'title' => $meeting->title,
+            'description' => $meeting->description,
+            'location' => $meeting->location,
+            'starts_at' => $meeting->starts_at,
+            'ends_at' => $meeting->ends_at,
+            'sync_status' => 'synced',
+        ])->save();
+
+        return $event;
+    }
+
+    public function deleteEvent(IntegrationAccount $account, CalendarEvent $event): void
+    {
+        $this->ensureValidToken($account);
+
+        Http::withToken($account->access_token)
+            ->delete(self::GRAPH_BASE.'/me/events/'.$event->external_id)
+            ->throw();
+
+        $event->delete();
+    }
+
+    public function watchCalendar(IntegrationAccount $account): void
+    {
+        $this->ensureValidToken($account);
+
+        Http::withToken($account->access_token)
+            ->post(self::GRAPH_BASE.'/subscriptions', [
+                'changeType' => 'created,updated,deleted',
+                'notificationUrl' => config('integrations.microsoft.webhook_url'),
+                'resource' => '/me/events',
+                'expirationDateTime' => now()->addDays(2)->toIso8601String(),
+                'clientState' => 'cadence-cal-'.$account->id,
+            ])
+            ->throw();
+    }
+
+    protected function meetingPayload(Meeting $meeting): array
+    {
+        $attendees = $meeting->attendees()
+            ->pluck('email')
+            ->filter()
+            ->map(fn ($email) => ['emailAddress' => ['address' => $email], 'type' => 'required'])
+            ->values()
+            ->all();
+
+        return [
+            'subject' => $meeting->title,
+            'body' => [
+                'contentType' => 'HTML',
+                'content' => $meeting->description ?? '',
+            ],
+            'location' => ['displayName' => $meeting->location ?: ($meeting->meeting_url ?? '')],
+            'start' => ['dateTime' => $meeting->starts_at->toIso8601String(), 'timeZone' => 'UTC'],
+            'end' => ['dateTime' => $meeting->ends_at->toIso8601String(), 'timeZone' => 'UTC'],
+            'attendees' => $attendees,
+        ];
     }
 
     protected function tokenRequest(array $extra): array

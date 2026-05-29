@@ -3,21 +3,27 @@
 namespace App\Integrations\Providers\Gmail;
 
 use App\Enums\MessageChannel;
+use App\Integrations\Contracts\CalendarProvider;
 use App\Integrations\Contracts\EmailProvider;
 use App\Integrations\Contracts\OAuthProvider;
+use App\Models\CalendarEvent;
 use App\Models\IntegrationAccount;
+use App\Models\Meeting;
 use App\Models\Message;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-class GmailProvider implements EmailProvider, OAuthProvider
+class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 {
     private const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 
     private const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
     private const API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
+    private const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary';
 
     public function authorizationUrl(string $state, ?string $redirectUri = null): string
     {
@@ -186,6 +192,178 @@ class GmailProvider implements EmailProvider, OAuthProvider
                 'labelIds' => ['INBOX'],
             ])
             ->throw();
+    }
+
+    public function syncEvents(IntegrationAccount $account): int
+    {
+        $this->ensureValidToken($account);
+
+        $persisted = 0;
+        $pageToken = null;
+        $params = $account->sync_cursor
+            ? ['syncToken' => $account->sync_cursor]
+            : ['timeMin' => now()->subWeek()->toIso8601String(), 'singleEvents' => 'true', 'maxResults' => 100];
+
+        $nextSyncToken = null;
+
+        do {
+            if ($pageToken) {
+                $params['pageToken'] = $pageToken;
+            }
+
+            $response = Http::withToken($account->access_token)
+                ->get(self::CALENDAR_BASE.'/events', $params)
+                ->throw()
+                ->json();
+
+            foreach (($response['items'] ?? []) as $event) {
+                if (($event['status'] ?? '') === 'cancelled') {
+                    CalendarEvent::query()
+                        ->where('integration_account_id', $account->id)
+                        ->where('external_id', $event['id'])
+                        ->delete();
+                    continue;
+                }
+
+                CalendarEvent::query()->updateOrCreate(
+                    ['integration_account_id' => $account->id, 'external_id' => $event['id']],
+                    [
+                        'workspace_id' => $account->workspace_id,
+                        'etag' => $event['etag'] ?? null,
+                        'title' => $event['summary'] ?? '(no title)',
+                        'description' => $event['description'] ?? null,
+                        'location' => $event['location'] ?? null,
+                        'starts_at' => $this->parseEventTime($event['start'] ?? []),
+                        'ends_at' => $this->parseEventTime($event['end'] ?? []),
+                        'attendees' => collect($event['attendees'] ?? [])
+                            ->pluck('email')->filter()->values()->all(),
+                        'sync_status' => 'synced',
+                    ]
+                );
+
+                $persisted++;
+            }
+
+            $pageToken = $response['nextPageToken'] ?? null;
+            $nextSyncToken = $response['nextSyncToken'] ?? $nextSyncToken;
+        } while ($pageToken);
+
+        $account->forceFill([
+            'last_synced_at' => now(),
+            'sync_cursor' => $nextSyncToken ?: $account->sync_cursor,
+            'last_error' => null,
+        ])->save();
+
+        return $persisted;
+    }
+
+    public function createEvent(IntegrationAccount $account, Meeting $meeting): CalendarEvent
+    {
+        $this->ensureValidToken($account);
+
+        $response = Http::withToken($account->access_token)
+            ->post(self::CALENDAR_BASE.'/events', $this->meetingPayload($meeting))
+            ->throw()
+            ->json();
+
+        return CalendarEvent::query()->updateOrCreate(
+            ['integration_account_id' => $account->id, 'external_id' => $response['id']],
+            [
+                'workspace_id' => $account->workspace_id,
+                'meeting_id' => $meeting->id,
+                'etag' => $response['etag'] ?? null,
+                'title' => $meeting->title,
+                'description' => $meeting->description,
+                'location' => $meeting->location,
+                'starts_at' => $meeting->starts_at,
+                'ends_at' => $meeting->ends_at,
+                'attendees' => $meeting->attendees()->pluck('email')->all(),
+                'sync_status' => 'synced',
+            ]
+        );
+    }
+
+    public function updateEvent(IntegrationAccount $account, CalendarEvent $event, Meeting $meeting): CalendarEvent
+    {
+        $this->ensureValidToken($account);
+
+        $response = Http::withToken($account->access_token)
+            ->patch(self::CALENDAR_BASE.'/events/'.$event->external_id, $this->meetingPayload($meeting))
+            ->throw()
+            ->json();
+
+        $event->forceFill([
+            'etag' => $response['etag'] ?? null,
+            'title' => $meeting->title,
+            'description' => $meeting->description,
+            'location' => $meeting->location,
+            'starts_at' => $meeting->starts_at,
+            'ends_at' => $meeting->ends_at,
+            'sync_status' => 'synced',
+        ])->save();
+
+        return $event;
+    }
+
+    public function deleteEvent(IntegrationAccount $account, CalendarEvent $event): void
+    {
+        $this->ensureValidToken($account);
+
+        Http::withToken($account->access_token)
+            ->delete(self::CALENDAR_BASE.'/events/'.$event->external_id)
+            ->throw();
+
+        $event->delete();
+    }
+
+    public function watchCalendar(IntegrationAccount $account): void
+    {
+        // Google Calendar push requires a verified domain + Pub/Sub topic; skip if unconfigured.
+        $topic = config('integrations.google.pubsub_topic');
+        if (! $topic) {
+            return;
+        }
+
+        $this->ensureValidToken($account);
+
+        Http::withToken($account->access_token)
+            ->post(self::CALENDAR_BASE.'/events/watch', [
+                'id' => 'cadence-cal-'.$account->id.'-'.uniqid(),
+                'type' => 'web_hook',
+                'address' => $topic,
+            ])
+            ->throw();
+    }
+
+    protected function meetingPayload(Meeting $meeting): array
+    {
+        $attendees = $meeting->attendees()
+            ->pluck('email')
+            ->filter()
+            ->map(fn ($email) => ['email' => $email])
+            ->values()
+            ->all();
+
+        return [
+            'summary' => $meeting->title,
+            'description' => $meeting->description,
+            'location' => $meeting->location ?: $meeting->meeting_url,
+            'start' => ['dateTime' => $meeting->starts_at->toIso8601String()],
+            'end' => ['dateTime' => $meeting->ends_at->toIso8601String()],
+            'attendees' => $attendees,
+        ];
+    }
+
+    protected function parseEventTime(array $time): ?CarbonImmutable
+    {
+        if (! empty($time['dateTime'])) {
+            return CarbonImmutable::parse($time['dateTime']);
+        }
+        if (! empty($time['date'])) {
+            return CarbonImmutable::parse($time['date']);
+        }
+
+        return null;
     }
 
     protected function ensureValidToken(IntegrationAccount $account): void

@@ -15,7 +15,12 @@ class IntegrationServiceProvider extends ServiceProvider
         $this->app->singleton(IntegrationManager::class, function () {
             $manager = new IntegrationManager;
 
+            // One Google OAuth grant covers both Gmail + Calendar scopes,
+            // so the GmailProvider class implements EmailProvider AND CalendarProvider.
             $manager->bind(IntegrationProvider::Gmail, GmailProvider::class);
+            $manager->bind(IntegrationProvider::GoogleCalendar, GmailProvider::class);
+
+            // Microsoft Graph likewise covers Outlook mail + calendar through one grant.
             $manager->bind(IntegrationProvider::Microsoft, MicrosoftProvider::class);
 
             return $manager;

@@ -2,11 +2,13 @@
 
 namespace App\Providers;
 
+use App\Models\Meeting;
 use App\Models\Priority;
 use App\Models\Project;
 use App\Models\Status;
 use App\Models\Tag;
 use App\Models\Task;
+use App\Observers\MeetingObserver;
 use App\Observers\ProjectObserver;
 use App\Observers\TaskObserver;
 use App\Policies\TaxonomyPolicy;
@@ -35,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Project::observe(ProjectObserver::class);
         Task::observe(TaskObserver::class);
+        Meeting::observe(MeetingObserver::class);
     }
 
     protected function configureDefaults(): void
