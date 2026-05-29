@@ -34,6 +34,14 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
+        {{-- PWA --}}
+        <link rel="manifest" href="/manifest.webmanifest">
+        <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="Cadence">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
         @fonts
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])

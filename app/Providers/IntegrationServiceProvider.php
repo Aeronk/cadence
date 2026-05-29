@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Enums\IntegrationProvider;
 use App\Integrations\IntegrationManager;
+use App\Integrations\Providers\Gmail\GmailProvider;
+use App\Integrations\Providers\Microsoft\MicrosoftProvider;
 use Illuminate\Support\ServiceProvider;
 
 class IntegrationServiceProvider extends ServiceProvider
@@ -12,8 +15,8 @@ class IntegrationServiceProvider extends ServiceProvider
         $this->app->singleton(IntegrationManager::class, function () {
             $manager = new IntegrationManager;
 
-            // Concrete bindings land in M8-M10. Example:
-            // $manager->bind(IntegrationProvider::Gmail, \App\Integrations\Providers\Gmail\GmailProvider::class);
+            $manager->bind(IntegrationProvider::Gmail, GmailProvider::class);
+            $manager->bind(IntegrationProvider::Microsoft, MicrosoftProvider::class);
 
             return $manager;
         });

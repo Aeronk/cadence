@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-vue-next';
+import {
+    Activity,
+    Bell,
+    CalendarDays,
+    CheckSquare,
+    FileText,
+    LayoutGrid,
+    ListTodo,
+    StickyNote,
+} from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
+import InstallAppButton from '@/components/InstallAppButton.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
+import WorkspaceSwitcher from '@/components/WorkspaceSwitcher.vue';
 import {
     Sidebar,
     SidebarContent,
@@ -15,27 +25,24 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import projects from '@/routes/projects';
+import tasks from '@/routes/tasks';
+import todos from '@/routes/todos';
+import notes from '@/routes/notes';
+import meetings from '@/routes/meetings';
+import activity from '@/routes/activity';
+import notifications from '@/routes/notifications';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
-    },
+    { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
+    { title: 'Projects', href: projects.index(), icon: FileText },
+    { title: 'Tasks', href: tasks.index(), icon: CheckSquare },
+    { title: 'Todos', href: todos.index(), icon: ListTodo },
+    { title: 'Notes', href: notes.index(), icon: StickyNote },
+    { title: 'Meetings', href: meetings.index(), icon: CalendarDays },
+    { title: 'Activity', href: activity.index(), icon: Activity },
+    { title: 'Notifications', href: notifications.index(), icon: Bell },
 ];
 </script>
 
@@ -51,6 +58,7 @@ const footerNavItems: NavItem[] = [
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
+            <WorkspaceSwitcher />
         </SidebarHeader>
 
         <SidebarContent>
@@ -58,7 +66,9 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <div class="px-2">
+                <InstallAppButton />
+            </div>
             <NavUser />
         </SidebarFooter>
     </Sidebar>

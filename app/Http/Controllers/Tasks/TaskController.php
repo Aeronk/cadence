@@ -45,6 +45,16 @@ class TaskController extends Controller
         return Inertia::render('Tasks/Index', [
             'tasks' => $query->orderBy('position')->get(),
             'filters' => ['project_id' => $request->integer('project_id') ?: null],
+            'projects_for_select' => Project::query()
+                ->forWorkspace($workspace)
+                ->when(! $workspace->roleFor($user)?->canManageWorkspace(), function ($q) use ($user) {
+                    $q->where(function ($q) use ($user) {
+                        $q->where('created_by', $user->id)
+                            ->orWhereHas('members', fn ($q) => $q->where('users.id', $user->id));
+                    });
+                })
+                ->orderBy('title')
+                ->get(['id', 'title']),
         ]);
     }
 
@@ -54,6 +64,7 @@ class TaskController extends Controller
 
         return Inertia::render('Tasks/Show', [
             'task' => $task->load(['status', 'priority', 'creator', 'assignees', 'tags', 'subtasks']),
+            'comments' => $task->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
         ]);
     }
 

@@ -4,6 +4,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { registerPwa } from '@/lib/registerPwa';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -31,3 +32,8 @@ initializeTheme();
 
 // This will listen for flash toast data from the server...
 initializeFlashToast();
+
+// Register PWA service worker (production) + capture install prompt.
+if (import.meta.env.PROD) {
+    registerPwa();
+}

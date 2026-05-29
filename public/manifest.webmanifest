@@ -1,0 +1,44 @@
+{
+    "name": "Cadence",
+    "short_name": "Cadence",
+    "description": "Tasks, calendar and messaging in one cadence.",
+    "start_url": "/dashboard",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#ffffff",
+    "theme_color": "#0a0a0a",
+    "categories": ["productivity", "business"],
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "New task",
+            "short_name": "Task",
+            "description": "Open the tasks list",
+            "url": "/tasks"
+        },
+        {
+            "name": "My todos",
+            "short_name": "Todos",
+            "url": "/todos"
+        },
+        {
+            "name": "Today's meetings",
+            "short_name": "Meetings",
+            "url": "/meetings"
+        }
+    ]
+}

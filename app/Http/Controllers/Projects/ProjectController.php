@@ -44,6 +44,7 @@ class ProjectController extends Controller
 
         return Inertia::render('Projects/Show', [
             'project' => $project->load(['status', 'priority', 'creator', 'members', 'tags']),
+            'comments' => $project->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
         ]);
     }
 

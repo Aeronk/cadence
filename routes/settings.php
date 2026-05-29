@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Integrations\IntegrationAccountController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -24,4 +25,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+
+    Route::get('settings/integrations', [IntegrationAccountController::class, 'index'])->name('integrations.index');
+    Route::delete('settings/integrations/{account}', [IntegrationAccountController::class, 'destroy'])->name('integrations.destroy');
 });
