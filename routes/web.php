@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Activity\ActivityLogController;
+use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
 use App\Http\Controllers\DashboardController;
@@ -35,6 +36,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('comments/{comment}', [CommentController::class, 'destroy'])->name('comments.destroy');
 
     Route::resource('meetings', MeetingController::class)->except(['create', 'edit']);
+
+    Route::get('calendar', CalendarController::class)->name('calendar.index');
 
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
 
