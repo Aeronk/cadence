@@ -67,6 +67,11 @@ class Project extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function clients(): BelongsToMany
+    {
+        return $this->belongsToMany(Client::class, 'client_project')->withTimestamps();
+    }
+
     public function isArchived(): bool
     {
         return $this->archived_at !== null;

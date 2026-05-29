@@ -29,6 +29,8 @@ class StoreProjectRequest extends FormRequest
             ],
             'tag_ids' => ['nullable', 'array'],
             'tag_ids.*' => [Rule::exists('tags', 'id')->where('workspace_id', $workspaceId)],
+            'client_ids' => ['nullable', 'array'],
+            'client_ids.*' => [Rule::exists('clients', 'id')->where('workspace_id', $workspaceId)],
         ];
     }
 }

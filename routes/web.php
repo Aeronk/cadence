@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Activity\ActivityLogController;
+use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\OAuthController;
@@ -27,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('tasks', TaskController::class);
     Route::resource('todos', TodoController::class)->except(['show', 'create', 'edit']);
     Route::resource('notes', NoteController::class)->except(['show', 'create', 'edit']);
+    Route::resource('clients', ClientController::class)->except(['show', 'create', 'edit']);
 
     Route::post('comments', [CommentController::class, 'store'])->name('comments.store');
     Route::patch('comments/{comment}', [CommentController::class, 'update'])->name('comments.update');

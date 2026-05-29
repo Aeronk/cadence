@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import {
     Activity,
     Bell,
+    Briefcase,
     CalendarDays,
     CheckSquare,
     FileText,
@@ -30,6 +31,7 @@ import tasks from '@/routes/tasks';
 import todos from '@/routes/todos';
 import notes from '@/routes/notes';
 import meetings from '@/routes/meetings';
+import clients from '@/routes/clients';
 import activity from '@/routes/activity';
 import notifications from '@/routes/notifications';
 import type { NavItem } from '@/types';
@@ -41,6 +43,7 @@ const mainNavItems: NavItem[] = [
     { title: 'Todos', href: todos.index(), icon: ListTodo },
     { title: 'Notes', href: notes.index(), icon: StickyNote },
     { title: 'Meetings', href: meetings.index(), icon: CalendarDays },
+    { title: 'Clients', href: clients.index(), icon: Briefcase },
     { title: 'Activity', href: activity.index(), icon: Activity },
     { title: 'Notifications', href: notifications.index(), icon: Bell },
 ];

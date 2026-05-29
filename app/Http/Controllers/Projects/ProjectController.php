@@ -43,8 +43,15 @@ class ProjectController extends Controller
         $this->authorize('view', $project);
 
         return Inertia::render('Projects/Show', [
-            'project' => $project->load(['status', 'priority', 'creator', 'members', 'tags']),
+            'project' => $project->load(['status', 'priority', 'creator', 'members', 'tags', 'clients']),
             'comments' => $project->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
+            'tasks' => $project->tasks()
+                ->with(['priority:id,name,color,level', 'assignees:id,name'])
+                ->orderBy('position')
+                ->get(['id', 'title', 'status_id', 'priority_id', 'due_date', 'completed_at', 'position']),
+            'statuses' => $project->workspace->statuses()
+                ->orderBy('position')
+                ->get(['id', 'name', 'color', 'position', 'is_completed']),
         ]);
     }
 
@@ -80,6 +87,10 @@ class ProjectController extends Controller
             $project->syncTagIds((array) $tagIds);
         }
 
+        if ($request->has('client_ids')) {
+            $project->clients()->sync((array) $request->input('client_ids', []));
+        }
+
         return to_route('projects.show', $project)->with('flash.success', 'Project created.');
     }
 
@@ -101,6 +112,10 @@ class ProjectController extends Controller
 
         if ($request->has('tag_ids')) {
             $project->syncTagIds((array) $request->input('tag_ids', []));
+        }
+
+        if ($request->has('client_ids')) {
+            $project->clients()->sync((array) $request->input('client_ids', []));
         }
 
         return back()->with('flash.success', 'Project updated.');
