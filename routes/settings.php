@@ -3,6 +3,7 @@
 use App\Http\Controllers\Integrations\IntegrationAccountController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Workspaces\WorkspaceController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
@@ -28,4 +29,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('settings/integrations', [IntegrationAccountController::class, 'index'])->name('integrations.index');
     Route::delete('settings/integrations/{account}', [IntegrationAccountController::class, 'destroy'])->name('integrations.destroy');
+
+    Route::get('settings/workspace', [WorkspaceController::class, 'edit'])->name('workspace.edit');
+    Route::patch('settings/workspace/{workspace}', [WorkspaceController::class, 'update'])->name('workspace.update');
+    Route::delete('settings/workspace/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
+    Route::post('settings/workspace/{workspace}/leave', [WorkspaceController::class, 'leave'])->name('workspace.leave');
+    Route::post('settings/workspace/{workspace}/members', [WorkspaceController::class, 'inviteMember'])->name('workspace.members.invite');
+    Route::patch('settings/workspace/{workspace}/members/{member}', [WorkspaceController::class, 'updateMemberRole'])->name('workspace.members.update');
+    Route::delete('settings/workspace/{workspace}/members/{member}', [WorkspaceController::class, 'removeMember'])->name('workspace.members.remove');
 });

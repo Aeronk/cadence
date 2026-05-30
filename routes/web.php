@@ -59,5 +59,9 @@ Route::post('integrations/gmail/webhook', [WebhookController::class, 'gmail'])
     ->name('integrations.webhooks.gmail');
 Route::match(['get', 'post'], 'integrations/microsoft/webhook', [WebhookController::class, 'microsoft'])
     ->name('integrations.webhooks.microsoft');
+Route::post('integrations/twilio/webhook', [WebhookController::class, 'twilio'])
+    ->name('integrations.webhooks.twilio');
+Route::match(['get', 'post'], 'integrations/whatsapp/webhook', [WebhookController::class, 'whatsapp'])
+    ->name('integrations.webhooks.whatsapp');
 
 require __DIR__.'/settings.php';
