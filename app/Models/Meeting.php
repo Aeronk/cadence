@@ -15,6 +15,12 @@ class Meeting extends Model
     /** @use HasFactory<MeetingFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
+    public const TYPE_PHYSICAL = 'physical';
+
+    public const TYPE_ONLINE = 'online';
+
+    public const TYPE_HYBRID = 'hybrid';
+
     protected $fillable = [
         'workspace_id',
         'host_id',
@@ -26,6 +32,10 @@ class Meeting extends Model
         'starts_at',
         'ends_at',
         'status',
+        'meeting_type',
+        'channel',
+        'reminder_minutes_before',
+        'reminder_sent_at',
         'external_calendar_id',
         'external_event_id',
     ];
@@ -35,6 +45,8 @@ class Meeting extends Model
         return [
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'reminder_sent_at' => 'datetime',
+            'reminder_minutes_before' => 'integer',
         ];
     }
 

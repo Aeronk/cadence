@@ -52,6 +52,13 @@ class ProjectController extends Controller
             'statuses' => $project->workspace->statuses()
                 ->orderBy('position')
                 ->get(['id', 'name', 'color', 'position', 'is_completed']),
+            'milestones' => $project->milestones()
+                ->with('creator:id,name')
+                ->get(['id', 'title', 'description', 'due_date', 'progress', 'completed_at', 'position', 'created_by']),
+            'workspace_members' => $project->workspace->members()
+                ->select('users.id', 'users.name', 'users.email')
+                ->orderBy('users.name')
+                ->get(),
         ]);
     }
 

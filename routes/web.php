@@ -8,6 +8,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\OAuthController;
 use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Meetings\MeetingController;
+use App\Http\Controllers\Milestones\MilestoneController;
+use App\Http\Controllers\Projects\ProjectArchiveController;
 use App\Http\Controllers\Notes\NoteController;
 use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Projects\ProjectController;
@@ -30,6 +32,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('todos', TodoController::class)->except(['show', 'create', 'edit']);
     Route::resource('notes', NoteController::class)->except(['show', 'create', 'edit']);
     Route::resource('clients', ClientController::class)->except(['show', 'create', 'edit']);
+
+    Route::post('projects/{project}/archive', [ProjectArchiveController::class, 'store'])->name('projects.archive');
+    Route::delete('projects/{project}/archive', [ProjectArchiveController::class, 'destroy'])->name('projects.unarchive');
+
+    Route::post('milestones', [MilestoneController::class, 'store'])->name('milestones.store');
+    Route::patch('milestones/{milestone}', [MilestoneController::class, 'update'])->name('milestones.update');
+    Route::delete('milestones/{milestone}', [MilestoneController::class, 'destroy'])->name('milestones.destroy');
 
     Route::post('comments', [CommentController::class, 'store'])->name('comments.store');
     Route::patch('comments/{comment}', [CommentController::class, 'update'])->name('comments.update');

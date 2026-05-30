@@ -72,6 +72,11 @@ class Project extends Model
         return $this->belongsToMany(Client::class, 'client_project')->withTimestamps();
     }
 
+    public function milestones(): HasMany
+    {
+        return $this->hasMany(Milestone::class)->orderBy('position');
+    }
+
     public function isArchived(): bool
     {
         return $this->archived_at !== null;

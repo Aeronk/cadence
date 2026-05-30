@@ -91,9 +91,11 @@ function submit() {
                     class="block rounded-lg border border-border p-4 transition hover:border-primary"
                 >
                     <h3 class="mb-1 font-semibold">{{ project.title }}</h3>
-                    <p v-if="project.description" class="line-clamp-2 text-sm text-muted-foreground">
-                        {{ project.description }}
-                    </p>
+                    <div
+                        v-if="project.description"
+                        class="prose prose-sm line-clamp-2 max-w-none text-sm text-muted-foreground dark:prose-invert"
+                        v-html="project.description"
+                    ></div>
                     <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                         <span v-if="project.status" class="rounded-full bg-muted px-2 py-0.5">
                             {{ project.status.name }}

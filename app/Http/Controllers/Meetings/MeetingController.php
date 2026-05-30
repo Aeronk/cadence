@@ -63,6 +63,9 @@ class MeetingController extends Controller
             'meeting_url' => $request->input('meeting_url'),
             'starts_at' => $request->date('starts_at'),
             'ends_at' => $request->date('ends_at'),
+            'meeting_type' => $request->input('meeting_type', 'online'),
+            'channel' => $request->input('channel'),
+            'reminder_minutes_before' => $request->input('reminder_minutes_before'),
         ]);
 
         $attendeeIds = (array) $request->input('attendee_ids', []);
@@ -94,7 +97,13 @@ class MeetingController extends Controller
 
         $meeting->fill($request->only([
             'title', 'description', 'project_id', 'location', 'meeting_url', 'starts_at', 'ends_at',
-        ]))->save();
+            'meeting_type', 'channel', 'reminder_minutes_before',
+        ]));
+        // Reset the reminder if time changed so it can fire again.
+        if ($meeting->isDirty(['starts_at', 'reminder_minutes_before'])) {
+            $meeting->reminder_sent_at = null;
+        }
+        $meeting->save();
 
         if ($request->has('attendee_ids')) {
             $meeting->attendees()->sync(
