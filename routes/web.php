@@ -18,6 +18,8 @@ use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\Todos\TodoController;
 use App\Http\Controllers\Trips\TripController;
+use App\Http\Controllers\Goals\GoalController;
+use App\Http\Controllers\PersonalEvents\PersonalEventController;
 use App\Http\Controllers\Workspaces\SwitchWorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -57,6 +59,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('reminders', [ReminderController::class, 'store'])->name('reminders.store');
     Route::delete('reminders/{reminder}', [ReminderController::class, 'destroy'])->name('reminders.destroy');
+
+    Route::get('goals', [GoalController::class, 'index'])->name('goals.index');
+    Route::post('goals', [GoalController::class, 'store'])->name('goals.store');
+    Route::patch('goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+    Route::delete('goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
+
+    Route::get('personal-events', [PersonalEventController::class, 'index'])->name('personal-events.index');
+    Route::post('personal-events', [PersonalEventController::class, 'store'])->name('personal-events.store');
+    Route::delete('personal-events/{event}', [PersonalEventController::class, 'destroy'])->name('personal-events.destroy');
 
     Route::post('comments', [CommentController::class, 'store'])->name('comments.store');
     Route::patch('comments/{comment}', [CommentController::class, 'update'])->name('comments.update');

@@ -10,8 +10,10 @@ import {
     FileText,
     LayoutGrid,
     ListTodo,
+    Heart,
     Plane,
     StickyNote,
+    Target,
 } from 'lucide-vue-next';
 import AppLogo from '@/components/AppLogo.vue';
 import InstallAppButton from '@/components/InstallAppButton.vue';
@@ -49,6 +51,8 @@ const mainNavItems: NavItem[] = [
     { title: 'Meetings', href: '/meetings', icon: CalendarDays },
     { title: 'Calendar', href: '/calendar', icon: CalendarDays },
     { title: 'Trips', href: '/trips', icon: Plane },
+    { title: 'Goals', href: '/goals', icon: Target },
+    { title: 'Personal', href: '/personal-events', icon: Heart },
     { title: 'Clients', href: '/clients', icon: Briefcase },
     { title: 'Activity', href: '/activity', icon: Activity },
     { title: 'Notifications', href: '/notifications', icon: Bell },

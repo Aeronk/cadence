@@ -17,6 +17,7 @@ type CalendarEvent = {
 };
 
 type TravelDay = { date: string; trip_id: number; trip_name: string; destination: string | null };
+type PersonalDay = { id: number; date: string; title: string; category: string | null };
 
 const props = defineProps<{
     view: 'day' | 'week' | 'month';
@@ -27,7 +28,16 @@ const props = defineProps<{
     today_iso: string;
     events: CalendarEvent[];
     travel_days: TravelDay[];
+    personal_events: PersonalDay[];
 }>();
+
+const personalByDay = computed(() => {
+    const map: Record<string, PersonalDay[]> = {};
+    for (const p of props.personal_events ?? []) {
+        (map[p.date] ||= []).push(p);
+    }
+    return map;
+});
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -193,6 +203,14 @@ const eventClass = (ev: CalendarEvent) =>
                         >
                             ✈ {{ t.destination || t.trip_name }}
                         </Link>
+                        <div
+                            v-for="p in personalByDay[cell.iso] || []"
+                            :key="`pe-${p.id}-${p.date}`"
+                            class="flex items-center gap-1 truncate rounded bg-pink-100 px-1.5 py-0.5 text-[11px] text-pink-800 dark:bg-pink-900/40 dark:text-pink-300"
+                            :title="p.title"
+                        >
+                            🎉 {{ p.title }}
+                        </div>
                         <template v-for="ev in eventsByDay[cell.iso] || []" :key="ev.id">
                             <Link
                                 v-if="ev.url"
@@ -313,6 +331,9 @@ const eventClass = (ev: CalendarEvent) =>
                 </span>
                 <span class="flex items-center gap-1">
                     <span class="h-2 w-2 rounded-full bg-orange-500" /> Travel day
+                </span>
+                <span class="flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-full bg-pink-500" /> Personal event
                 </span>
             </div>
         </div>

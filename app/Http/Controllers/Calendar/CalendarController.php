@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Calendar;
 use App\Http\Controllers\Controller;
 use App\Models\CalendarEvent;
 use App\Models\Meeting;
+use App\Models\PersonalEvent;
 use App\Models\Trip;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -92,6 +93,22 @@ class CalendarController extends Controller
                 }
             });
 
+        // Personal events overlay — birthdays, anniversaries (yearly recurring)
+        $personalDays = [];
+        PersonalEvent::query()
+            ->where('user_id', $user->id)
+            ->get(['id', 'title', 'category', 'event_date', 'recurs_yearly'])
+            ->each(function (PersonalEvent $ev) use (&$personalDays, $rangeStart, $rangeEnd) {
+                foreach ($ev->occurrencesIn($rangeStart, $rangeEnd) as $iso) {
+                    $personalDays[] = [
+                        'id' => $ev->id,
+                        'date' => $iso,
+                        'title' => $ev->title,
+                        'category' => $ev->category,
+                    ];
+                }
+            });
+
         return Inertia::render('Calendar/Index', [
             'view' => $view,
             'cursor_iso' => $cursor->toIso8601String(),
@@ -101,6 +118,7 @@ class CalendarController extends Controller
             'today_iso' => now()->toDateString(),
             'events' => $meetings->concat($external)->values(),
             'travel_days' => $tripDays,
+            'personal_events' => $personalDays,
         ]);
     }
 
