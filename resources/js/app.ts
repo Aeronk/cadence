@@ -4,6 +4,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { getEcho } from '@/lib/echo';
 import { registerPwa } from '@/lib/registerPwa';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
@@ -32,6 +33,10 @@ initializeTheme();
 
 // This will listen for flash toast data from the server...
 initializeFlashToast();
+
+// Open the Echo (Reverb) WebSocket connection — no-op if VITE_REVERB_APP_KEY
+// is unset, so dev runs without a Reverb server still work fine.
+getEcho();
 
 // Register PWA service worker (production) + capture install prompt.
 if (import.meta.env.PROD) {

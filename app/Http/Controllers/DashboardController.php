@@ -81,6 +81,63 @@ class DashboardController extends Controller
                 ->latest()
                 ->limit(10)
                 ->get(['id', 'actor_id', 'action', 'description', 'created_at']),
+            'charts' => $this->charts($user, $workspace),
         ]);
+    }
+
+    /**
+     * Lightweight chart series for the dashboard — small payloads, all aggregated.
+     */
+    protected function charts($user, $workspace): array
+    {
+        $weekStart = now()->startOfWeek();
+
+        $tasksThisWeek = Task::query()
+            ->forWorkspace($workspace)
+            ->where(function ($q) use ($user) {
+                $q->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id))
+                    ->orWhere('created_by', $user->id);
+            })
+            ->where('created_at', '>=', $weekStart)
+            ->selectRaw('COUNT(*) as total, SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) as done')
+            ->first();
+
+        $byPriority = Task::query()
+            ->forWorkspace($workspace)
+            ->whereNull('completed_at')
+            ->join('priorities', 'priorities.id', '=', 'tasks.priority_id')
+            ->selectRaw('priorities.level as level, priorities.name as name, COUNT(*) as count')
+            ->groupBy('priorities.level', 'priorities.name')
+            ->orderBy('priorities.level')
+            ->get()
+            ->map(fn ($r) => ['label' => $r->name, 'count' => (int) $r->count, 'level' => (int) $r->level]);
+
+        // Last 14 days of activity, bucketed by day.
+        $activitySeries = ActivityLog::query()
+            ->forWorkspace($workspace)
+            ->where('created_at', '>=', now()->subDays(13)->startOfDay())
+            ->selectRaw("DATE(created_at) as day, COUNT(*) as count")
+            ->groupBy('day')
+            ->orderBy('day')
+            ->pluck('count', 'day');
+
+        $days = [];
+        for ($i = 13; $i >= 0; $i--) {
+            $d = now()->subDays($i)->toDateString();
+            $days[] = [
+                'day' => $d,
+                'label' => now()->subDays($i)->format('D'),
+                'count' => (int) ($activitySeries[$d] ?? 0),
+            ];
+        }
+
+        return [
+            'this_week' => [
+                'total' => (int) ($tasksThisWeek->total ?? 0),
+                'done' => (int) ($tasksThisWeek->done ?? 0),
+            ],
+            'by_priority' => $byPriority,
+            'activity_14d' => $days,
+        ];
     }
 }

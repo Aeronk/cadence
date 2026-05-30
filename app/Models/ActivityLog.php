@@ -52,7 +52,7 @@ class ActivityLog extends Model
         ?Model $subject = null,
         array $properties = []
     ): self {
-        return static::create([
+        $log = static::create([
             'workspace_id' => $workspace->id,
             'actor_id' => $actor?->id,
             'subject_type' => $subject ? $subject::class : null,
@@ -61,5 +61,9 @@ class ActivityLog extends Model
             'description' => $description,
             'properties' => $properties ?: null,
         ]);
+
+        \App\Events\ActivityRecorded::dispatch($log);
+
+        return $log;
     }
 }

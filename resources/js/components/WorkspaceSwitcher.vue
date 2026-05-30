@@ -10,7 +10,6 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import workspaces from '@/routes/workspaces';
 
 type Workspace = {
     id: number;
@@ -28,7 +27,7 @@ const page = usePage<{
 
 function switchTo(workspace: Workspace) {
     if (workspace.id === page.props.auth.currentWorkspace?.id) return;
-    router.put(workspaces.switch(workspace.id).url, {}, { preserveScroll: true });
+    router.put(`/workspaces/${workspace.id}/switch`, {}, { preserveScroll: true });
 }
 </script>
 

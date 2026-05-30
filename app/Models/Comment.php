@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\CommentPosted;
 use Database\Factories\CommentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +23,13 @@ class Comment extends Model
         'commentable_id',
         'body',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (Comment $comment): void {
+            CommentPosted::dispatch($comment);
+        });
+    }
 
     public function user(): BelongsTo
     {

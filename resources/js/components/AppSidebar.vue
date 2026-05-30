@@ -25,29 +25,22 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import projects from '@/routes/projects';
-import tasks from '@/routes/tasks';
-import todos from '@/routes/todos';
-import notes from '@/routes/notes';
-import meetings from '@/routes/meetings';
-import calendar from '@/routes/calendar';
-import clients from '@/routes/clients';
-import activity from '@/routes/activity';
-import notifications from '@/routes/notifications';
 import type { NavItem } from '@/types';
 
+// Use direct URLs instead of Wayfinder-generated helpers so the sidebar
+// renders even before `npm run dev` has regenerated route modules for
+// newer endpoints (calendar / clients / etc.).
 const mainNavItems: NavItem[] = [
-    { title: 'Dashboard', href: dashboard(), icon: LayoutGrid },
-    { title: 'Projects', href: projects.index(), icon: FileText },
-    { title: 'Tasks', href: tasks.index(), icon: CheckSquare },
-    { title: 'Todos', href: todos.index(), icon: ListTodo },
-    { title: 'Notes', href: notes.index(), icon: StickyNote },
-    { title: 'Meetings', href: meetings.index(), icon: CalendarDays },
-    { title: 'Calendar', href: calendar(), icon: CalendarDays },
-    { title: 'Clients', href: clients.index(), icon: Briefcase },
-    { title: 'Activity', href: activity.index(), icon: Activity },
-    { title: 'Notifications', href: notifications.index(), icon: Bell },
+    { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+    { title: 'Projects', href: '/projects', icon: FileText },
+    { title: 'Tasks', href: '/tasks', icon: CheckSquare },
+    { title: 'Todos', href: '/todos', icon: ListTodo },
+    { title: 'Notes', href: '/notes', icon: StickyNote },
+    { title: 'Meetings', href: '/meetings', icon: CalendarDays },
+    { title: 'Calendar', href: '/calendar', icon: CalendarDays },
+    { title: 'Clients', href: '/clients', icon: Briefcase },
+    { title: 'Activity', href: '/activity', icon: Activity },
+    { title: 'Notifications', href: '/notifications', icon: Bell },
 ];
 </script>
 
@@ -57,7 +50,7 @@ const mainNavItems: NavItem[] = [
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
-                        <Link :href="dashboard()">
+                        <Link href="/dashboard">
                             <AppLogo />
                         </Link>
                     </SidebarMenuButton>
