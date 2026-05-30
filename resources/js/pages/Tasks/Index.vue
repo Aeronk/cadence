@@ -14,6 +14,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import RichEditor from '@/components/RichEditor.vue';
 import tasksRoutes from '@/routes/tasks';
 
 type Task = {
@@ -85,6 +86,10 @@ function submit() {
                                 <Label for="title">Title</Label>
                                 <Input id="title" v-model="form.title" required />
                                 <p v-if="form.errors.title" class="mt-1 text-xs text-red-500">{{ form.errors.title }}</p>
+                            </div>
+                            <div>
+                                <Label>Description</Label>
+                                <RichEditor v-model="form.description" placeholder="Details, acceptance criteria…" />
                             </div>
                             <div>
                                 <Label for="due_date">Due date</Label>

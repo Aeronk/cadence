@@ -72,9 +72,11 @@ const tabs = [
                 <div class="flex items-start justify-between">
                     <div>
                         <h1 class="text-2xl font-bold">{{ project.title }}</h1>
-                        <p v-if="project.description" class="mt-1 text-sm text-muted-foreground">
-                            {{ project.description }}
-                        </p>
+                        <div
+                            v-if="project.description"
+                            class="prose prose-sm mt-1 max-w-none text-muted-foreground dark:prose-invert"
+                            v-html="project.description"
+                        ></div>
                     </div>
                     <Link
                         :href="tasksRoutes.index({ query: { project_id: project.id } }).url"

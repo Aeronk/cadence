@@ -14,6 +14,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import RichEditor from '@/components/RichEditor.vue';
 import clientsRoutes from '@/routes/clients';
 
 type Client = {
@@ -128,13 +129,8 @@ function remove(client: Client) {
                                 </div>
                             </div>
                             <div>
-                                <Label for="notes">Notes</Label>
-                                <textarea
-                                    id="notes"
-                                    v-model="form.notes"
-                                    rows="3"
-                                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                />
+                                <Label>Notes</Label>
+                                <RichEditor v-model="form.notes" placeholder="What you need to remember about this client…" />
                             </div>
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">

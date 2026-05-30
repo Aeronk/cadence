@@ -14,6 +14,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import RichEditor from '@/components/RichEditor.vue';
 import meetingsRoutes from '@/routes/meetings';
 
 type Meeting = {
@@ -88,6 +89,10 @@ function submit() {
                             <div>
                                 <Label for="meeting_url">Meeting URL</Label>
                                 <Input id="meeting_url" v-model="form.meeting_url" placeholder="https://…" />
+                            </div>
+                            <div>
+                                <Label>Agenda</Label>
+                                <RichEditor v-model="form.description" placeholder="Topics, links, attendees…" />
                             </div>
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">Schedule</Button>

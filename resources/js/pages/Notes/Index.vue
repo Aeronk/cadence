@@ -5,6 +5,7 @@ import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import RichEditor from '@/components/RichEditor.vue';
 import notesRoutes from '@/routes/notes';
 
 type Note = {
@@ -96,12 +97,7 @@ const cardClass = (color: string) =>
                 @submit.prevent="add"
             >
                 <Input v-model="form.title" placeholder="Title" required />
-                <textarea
-                    v-model="form.body"
-                    placeholder="Body…"
-                    rows="4"
-                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
+                <RichEditor v-model="form.body" placeholder="Body…" min-height="6rem" />
                 <div class="flex items-center justify-between">
                     <div class="flex gap-2">
                         <button
@@ -159,9 +155,10 @@ const cardClass = (color: string) =>
                         </div>
                     </div>
 
-                    <p class="line-clamp-6 flex-1 whitespace-pre-wrap text-sm">
-                        {{ note.body }}
-                    </p>
+                    <div
+                        class="prose prose-sm line-clamp-6 max-w-none flex-1 text-sm dark:prose-invert"
+                        v-html="note.body || ''"
+                    ></div>
 
                     <div class="mt-3 flex items-center justify-between border-t border-current/10 pt-2">
                         <div class="flex gap-1">

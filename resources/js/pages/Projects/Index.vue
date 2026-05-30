@@ -14,6 +14,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import RichEditor from '@/components/RichEditor.vue';
 import projectsRoutes from '@/routes/projects';
 
 type Project = {
@@ -66,8 +67,8 @@ function submit() {
                                 <p v-if="form.errors.title" class="mt-1 text-xs text-red-500">{{ form.errors.title }}</p>
                             </div>
                             <div>
-                                <Label for="description">Description</Label>
-                                <Input id="description" v-model="form.description" />
+                                <Label>Description</Label>
+                                <RichEditor v-model="form.description" placeholder="What is this project about?" />
                             </div>
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">Create</Button>
