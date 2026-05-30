@@ -12,6 +12,9 @@ use App\Observers\MeetingObserver;
 use App\Observers\ProjectObserver;
 use App\Observers\TaskObserver;
 use App\Policies\TaxonomyPolicy;
+use App\Services\AI\FakeProvider;
+use App\Services\AI\OpenAIProvider;
+use App\Services\AI\Provider as AIProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +26,16 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        $this->app->singleton(AIProvider::class, function () {
+            $key = (string) config('services.openai.key', env('OPENAI_API_KEY', ''));
+            if ($key === '' || app()->environment('testing')) {
+                return new FakeProvider();
+            }
+            return new OpenAIProvider(
+                apiKey: $key,
+                model: (string) config('services.openai.model', 'gpt-4o-mini'),
+            );
+        });
     }
 
     public function boot(): void

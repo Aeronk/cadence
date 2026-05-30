@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\GenerateDailyBriefings;
 use App\Console\Commands\GenerateRecurringOccurrences;
 use App\Console\Commands\SendDueReminders;
 use App\Console\Commands\SendMeetingReminders;
@@ -27,3 +28,8 @@ Schedule::command(SendDueReminders::class)
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Daily briefings — composed once per morning, idempotent via unique(user,workspace,date).
+Schedule::command(GenerateDailyBriefings::class)
+    ->dailyAt('06:30')
+    ->withoutOverlapping();

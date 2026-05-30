@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Activity\ActivityLogController;
 use App\Http\Controllers\Analytics\AnalyticsController;
+use App\Http\Controllers\Briefing\BriefingController;
 use App\Http\Controllers\Calendar\CalendarController;
+use App\Http\Controllers\Meetings\ExtractActionItemsController;
 use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
 use App\Http\Controllers\DashboardController;
@@ -80,6 +82,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
     Route::get('analytics', AnalyticsController::class)->name('analytics.index');
+
+    Route::get('briefing', [BriefingController::class, 'index'])->name('briefing.index');
+    Route::post('briefing/regenerate', [BriefingController::class, 'regenerate'])->name('briefing.regenerate');
+    Route::post('meetings/{meeting}/extract-action-items', ExtractActionItemsController::class)
+        ->name('meetings.extract-action-items');
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');

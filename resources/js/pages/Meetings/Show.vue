@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { BellRing, Calendar, MapPin, Pencil, Trash2, Users2, Video } from 'lucide-vue-next';
+import { BellRing, Calendar, MapPin, Pencil, Sparkles, Trash2, Users2, Video } from 'lucide-vue-next';
 import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import RichEditor from '@/components/RichEditor.vue';
@@ -56,6 +56,14 @@ function save() {
     });
 }
 
+function extractActionItems() {
+    router.post(
+        `/meetings/${props.meeting.id}/extract-action-items`,
+        { notes: props.meeting.description ?? '' },
+        { preserveScroll: true },
+    );
+}
+
 function cancelMeeting() {
     if (!confirm(`Cancel "${props.meeting.title}"?`)) return;
     router.delete(meetingsRoutes.destroy(props.meeting.id).url);
@@ -96,6 +104,14 @@ function cancelMeeting() {
                 </div>
 
                 <div class="flex shrink-0 gap-2">
+                    <Button
+                        v-if="meeting.description"
+                        variant="outline"
+                        size="sm"
+                        @click="extractActionItems"
+                    >
+                        <Sparkles class="mr-1.5 h-3.5 w-3.5 text-violet-500" /> Extract action items
+                    </Button>
                     <Button variant="outline" size="sm" @click="editOpen = true">
                         <Pencil class="mr-1.5 h-3.5 w-3.5" /> Edit
                     </Button>
