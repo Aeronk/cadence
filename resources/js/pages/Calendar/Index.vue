@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import calendar from '@/routes/calendar';
 
 type CalendarEvent = {
     id: string;
@@ -60,7 +59,7 @@ const eventsByDay = computed(() => {
 });
 
 function go(month: string) {
-    router.get(calendar({ query: { month } }).url, {}, { preserveScroll: true });
+    router.get(`/calendar?month=${month}`, {}, { preserveScroll: true });
 }
 
 function today() {
@@ -76,7 +75,7 @@ function eventTime(iso: string) {
 <template>
     <Head title="Calendar" />
 
-    <AppLayout :breadcrumbs="[{ title: 'Calendar', href: calendar().url }]">
+    <AppLayout :breadcrumbs="[{ title: 'Calendar', href: '/calendar' }]">
         <div class="flex h-full flex-col gap-4 p-6">
             <header class="flex items-center justify-between">
                 <div>
@@ -124,22 +123,33 @@ function eventTime(iso: string) {
                         />
                     </div>
 
-                    <component
-                        :is="ev.url ? Link : 'div'"
-                        v-for="ev in eventsByDay[cell.iso] || []"
-                        :key="ev.id"
-                        :href="ev.url ?? undefined"
-                        :class="[
-                            'truncate rounded px-1.5 py-0.5 text-[11px] leading-tight',
-                            ev.source === 'cadence'
-                                ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-                        ]"
-                        :title="`${ev.title} — ${eventTime(ev.starts_at)}`"
-                    >
-                        <span class="font-medium">{{ eventTime(ev.starts_at) }}</span>
-                        {{ ev.title }}
-                    </component>
+                    <template v-for="ev in eventsByDay[cell.iso] || []" :key="ev.id">
+                        <Link
+                            v-if="ev.url"
+                            :href="ev.url"
+                            :class="[
+                                'truncate rounded px-1.5 py-0.5 text-[11px] leading-tight',
+                                ev.source === 'cadence'
+                                    ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+                            ]"
+                            :title="`${ev.title} — ${eventTime(ev.starts_at)}`"
+                        >
+                            <span class="font-medium">{{ eventTime(ev.starts_at) }}</span>
+                            {{ ev.title }}
+                        </Link>
+                        <div
+                            v-else
+                            :class="[
+                                'truncate rounded px-1.5 py-0.5 text-[11px] leading-tight',
+                                'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+                            ]"
+                            :title="`${ev.title} — ${eventTime(ev.starts_at)}`"
+                        >
+                            <span class="font-medium">{{ eventTime(ev.starts_at) }}</span>
+                            {{ ev.title }}
+                        </div>
+                    </template>
                 </div>
             </div>
 

@@ -1,48 +1,53 @@
-// Laravel Echo + Pusher.js bootstrap pointing at our Reverb server.
-// Echo is lazy-singleton so SSR / tests don't try to open a socket.
+// Lazy Reverb/Echo bootstrap.
+// The Echo + Pusher packages are imported dynamically so the rest of the app
+// still loads if they haven't been installed yet (CI cold start, dev before
+// `npm install`, etc.). No-op if VITE_REVERB_APP_KEY is unset.
 
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+type EchoInstance = unknown;
 
 declare global {
     interface Window {
-        Pusher: typeof Pusher;
-        Echo?: Echo<'reverb'>;
+        Echo?: EchoInstance;
+        Pusher?: unknown;
     }
 }
 
-let echoInstance: Echo<'reverb'> | null = null;
+let echoPromise: Promise<EchoInstance | null> | null = null;
 
-export function getEcho(): Echo<'reverb'> | null {
+export async function getEcho(): Promise<EchoInstance | null> {
     if (typeof window === 'undefined') return null;
-    if (echoInstance) return echoInstance;
+    if (echoPromise) return echoPromise;
 
-    const key = import.meta.env.VITE_REVERB_APP_KEY;
-    if (!key) {
-        return null; // real-time disabled — backend wasn't configured
-    }
+    const key = import.meta.env.VITE_REVERB_APP_KEY as string | undefined;
+    if (!key) return null;
 
-    window.Pusher = Pusher;
+    echoPromise = (async () => {
+        try {
+            const [{ default: Echo }, { default: Pusher }] = await Promise.all([
+                import('laravel-echo'),
+                import('pusher-js'),
+            ]);
 
-    echoInstance = new Echo({
-        broadcaster: 'reverb',
-        key,
-        wsHost: import.meta.env.VITE_REVERB_HOST ?? window.location.hostname,
-        wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
-        wssPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
-        forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'http') === 'https',
-        enabledTransports: ['ws', 'wss'],
-        authEndpoint: '/broadcasting/auth',
-    });
+            window.Pusher = Pusher;
 
-    window.Echo = echoInstance;
-    return echoInstance;
-}
+            const echo = new Echo({
+                broadcaster: 'reverb',
+                key,
+                wsHost: (import.meta.env.VITE_REVERB_HOST as string | undefined) ?? window.location.hostname,
+                wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
+                wssPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
+                forceTLS: (import.meta.env.VITE_REVERB_SCHEME as string | undefined) === 'https',
+                enabledTransports: ['ws', 'wss'],
+                authEndpoint: '/broadcasting/auth',
+            });
 
-export function disconnectEcho(): void {
-    echoInstance?.disconnect();
-    echoInstance = null;
-    if (typeof window !== 'undefined') {
-        delete window.Echo;
-    }
+            window.Echo = echo;
+            return echo as EchoInstance;
+        } catch {
+            // laravel-echo / pusher-js not installed — silently no-op.
+            return null;
+        }
+    })();
+
+    return echoPromise;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Plus } from 'lucide-vue-next';
+import { CheckSquare, Flag, Plus } from 'lucide-vue-next';
 import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -22,8 +22,8 @@ type Task = {
     title: string;
     completed_at: string | null;
     due_date: string | null;
-    status: { name: string } | null;
-    priority: { name: string } | null;
+    status: { id: number; name: string; color: string } | null;
+    priority: { id: number; name: string; color: string; level?: number } | null;
     assignees: { id: number; name: string }[];
 };
 
@@ -40,6 +40,17 @@ const form = useForm({
     description: '',
     due_date: '',
 });
+
+function priorityClass(color: string | undefined) {
+    if (!color) return 'text-zinc-400';
+    return ({
+        red: 'text-red-500',
+        orange: 'text-orange-500',
+        blue: 'text-blue-500',
+        green: 'text-emerald-500',
+        gray: 'text-zinc-400',
+    } as Record<string, string>)[color] ?? 'text-zinc-400';
+}
 
 function submit() {
     form.post(tasksRoutes.store().url, {
@@ -107,31 +118,65 @@ function submit() {
                 Create a project first, then tasks can hang off it.
             </p>
 
-            <div v-if="tasks.length === 0" class="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                No tasks.
+            <div v-if="tasks.length === 0" class="rounded-xl border border-dashed p-12 text-center">
+                <CheckSquare class="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+                <p class="text-sm text-muted-foreground">No tasks yet.</p>
             </div>
 
-            <div v-else class="rounded-lg border">
+            <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <Link
                     v-for="task in tasks"
                     :key="task.id"
                     :href="tasksRoutes.show(task.id).url"
-                    class="flex items-center justify-between border-b px-4 py-3 last:border-b-0 hover:bg-muted/50"
+                    class="group flex flex-col rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-sm"
+                    :class="{ 'opacity-60': task.completed_at }"
                 >
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-start gap-3">
                         <input
                             type="checkbox"
                             :checked="task.completed_at !== null"
-                            class="h-4 w-4"
+                            class="mt-1 h-4 w-4 shrink-0"
                             @click.stop
                         />
-                        <span :class="{ 'line-through text-muted-foreground': task.completed_at }">
+                        <p
+                            class="min-w-0 flex-1 text-sm font-medium leading-snug group-hover:text-primary"
+                            :class="{ 'line-through text-muted-foreground': task.completed_at }"
+                        >
                             {{ task.title }}
-                        </span>
+                        </p>
+                        <Flag
+                            v-if="task.priority"
+                            class="h-3.5 w-3.5 shrink-0"
+                            :class="priorityClass(task.priority.color)"
+                        />
                     </div>
-                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span v-if="task.priority">{{ task.priority.name }}</span>
-                        <span v-if="task.due_date">{{ task.due_date }}</span>
+
+                    <div class="mt-3 flex items-center justify-between gap-2 text-xs">
+                        <div class="flex items-center gap-2 text-muted-foreground">
+                            <span v-if="task.status" class="rounded-full bg-muted px-2 py-0.5">
+                                {{ task.status.name }}
+                            </span>
+                            <span v-if="task.priority" class="capitalize">
+                                {{ task.priority.name }}
+                            </span>
+                        </div>
+                        <div v-if="task.assignees.length" class="flex -space-x-1">
+                            <span
+                                v-for="a in task.assignees.slice(0, 3)"
+                                :key="a.id"
+                                :title="a.name"
+                                class="grid h-5 w-5 place-items-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground ring-2 ring-background"
+                            >
+                                {{ a.name.charAt(0).toUpperCase() }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div
+                        v-if="task.due_date"
+                        class="mt-2 text-xs text-muted-foreground"
+                    >
+                        Due {{ new Date(task.due_date).toLocaleDateString() }}
                     </div>
                 </Link>
             </div>

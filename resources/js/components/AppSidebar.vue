@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
+import { onBeforeUnmount } from 'vue';
 import {
     Activity,
     Bell,
@@ -25,7 +26,15 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useSidebar } from '@/components/ui/sidebar/utils';
 import type { NavItem } from '@/types';
+
+// Auto-close the mobile drawer when the user navigates to a new page.
+const { isMobile, setOpenMobile } = useSidebar();
+const stopNav = router.on('navigate', () => {
+    if (isMobile.value) setOpenMobile(false);
+});
+onBeforeUnmount(() => stopNav());
 
 // Use direct URLs instead of Wayfinder-generated helpers so the sidebar
 // renders even before `npm run dev` has regenerated route modules for

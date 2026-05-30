@@ -26,6 +26,21 @@ type Project = {
     tags: { id: number; name: string; color: string }[];
     creator: { id: number; name: string };
     created_at: string;
+    due_date?: string | null;
+    archived_at?: string | null;
+};
+
+const dotColor = (color: string | undefined) => {
+    if (!color) return 'bg-zinc-400';
+    return ({
+        blue: 'bg-blue-500',
+        green: 'bg-emerald-500',
+        orange: 'bg-orange-500',
+        red: 'bg-red-500',
+        gray: 'bg-zinc-400',
+        slate: 'bg-slate-400',
+        purple: 'bg-violet-500',
+    } as Record<string, string>)[color] ?? 'bg-zinc-400';
 };
 
 defineProps<{ projects: Project[] }>();
@@ -83,30 +98,73 @@ function submit() {
                 <p class="text-sm text-muted-foreground">No projects yet. Create your first one.</p>
             </div>
 
-            <div v-else class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Link
                     v-for="project in projects"
                     :key="project.id"
                     :href="projectsRoutes.show(project.id).url"
-                    class="block rounded-lg border border-border p-4 transition hover:border-primary"
+                    class="group flex flex-col rounded-xl border bg-card p-5 transition hover:border-primary hover:shadow-md"
                 >
-                    <h3 class="mb-1 font-semibold">{{ project.title }}</h3>
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="truncate font-semibold leading-tight group-hover:text-primary">
+                                {{ project.title }}
+                            </h3>
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Created by {{ project.creator.name }}
+                            </p>
+                        </div>
+                        <span
+                            v-if="project.archived_at"
+                            class="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
+                        >
+                            Archived
+                        </span>
+                    </div>
+
                     <div
                         v-if="project.description"
-                        class="prose prose-sm line-clamp-2 max-w-none text-sm text-muted-foreground dark:prose-invert"
+                        class="prose prose-sm line-clamp-2 mt-3 max-w-none text-sm text-muted-foreground dark:prose-invert"
                         v-html="project.description"
                     ></div>
-                    <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                        <span v-if="project.status" class="rounded-full bg-muted px-2 py-0.5">
-                            {{ project.status.name }}
-                        </span>
-                        <span
-                            v-for="tag in project.tags"
-                            :key="tag.id"
-                            class="rounded-full bg-muted px-2 py-0.5"
+
+                    <div class="mt-auto pt-4">
+                        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span
+                                v-if="project.status"
+                                class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5"
+                            >
+                                <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.status.color)]" />
+                                {{ project.status.name }}
+                            </span>
+                            <span
+                                v-if="project.priority"
+                                class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5"
+                            >
+                                <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.priority.color)]" />
+                                {{ project.priority.name }}
+                            </span>
+                            <span
+                                v-for="tag in project.tags.slice(0, 3)"
+                                :key="tag.id"
+                                class="rounded-full bg-primary/10 px-2 py-0.5 text-primary"
+                            >
+                                #{{ tag.name }}
+                            </span>
+                            <span
+                                v-if="project.tags.length > 3"
+                                class="rounded-full bg-muted px-2 py-0.5"
+                            >
+                                +{{ project.tags.length - 3 }}
+                            </span>
+                        </div>
+
+                        <p
+                            v-if="project.due_date"
+                            class="mt-2 text-xs text-muted-foreground"
                         >
-                            #{{ tag.name }}
-                        </span>
+                            Due {{ new Date(project.due_date).toLocaleDateString() }}
+                        </p>
                     </div>
                 </Link>
             </div>

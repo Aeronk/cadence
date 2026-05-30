@@ -12,14 +12,20 @@ export function useChannel<T = unknown>(
     event: string,
     handler: (payload: T) => void,
 ): void {
-    const echo = getEcho();
-    if (!echo) return;
+    let cleanup: (() => void) | null = null;
 
-    const ch = echo.private(channel);
-    ch.listen(`.${event}`, handler as (...args: unknown[]) => void);
+    getEcho().then((echo) => {
+        if (!echo) return;
+        const e = echo as any;
+        const ch = e.private(channel);
+        ch.listen(`.${event}`, handler as (...args: unknown[]) => void);
+        cleanup = () => {
+            ch.stopListening(`.${event}`);
+            e.leave(`private-${channel}`);
+        };
+    });
 
     onBeforeUnmount(() => {
-        ch.stopListening(`.${event}`);
-        echo.leave(`private-${channel}`);
+        cleanup?.();
     });
 }
