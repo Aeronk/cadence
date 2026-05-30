@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { FolderOpen, Plus } from 'lucide-vue-next';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ExternalLink, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataToolbar from '@/components/DataToolbar.vue';
@@ -81,6 +81,21 @@ const filtered = computed(() => {
 
 const dialogOpen = ref(false);
 const form = useForm({ title: '', description: '' });
+
+function toggleArchive(project: Project) {
+    const url = `/projects/${project.id}/archive`;
+    if (project.archived_at) {
+        router.delete(url, { preserveScroll: true });
+    } else {
+        if (!confirm(`Archive "${project.title}"?`)) return;
+        router.post(url, {}, { preserveScroll: true });
+    }
+}
+
+function remove(project: Project) {
+    if (!confirm(`Permanently delete "${project.title}"? This cannot be undone.`)) return;
+    router.delete(projectsRoutes.destroy(project.id).url, { preserveScroll: true });
+}
 
 function submit() {
     form.post(projectsRoutes.store().url, {
@@ -240,6 +255,7 @@ function submit() {
                             <th class="px-4 py-2">Owner</th>
                             <th class="px-4 py-2">Tags</th>
                             <th class="px-4 py-2">Due</th>
+                            <th class="px-4 py-2 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -288,6 +304,33 @@ function submit() {
                             </td>
                             <td class="px-4 py-2 text-xs text-muted-foreground">
                                 {{ project.due_date ? new Date(project.due_date).toLocaleDateString() : '—' }}
+                            </td>
+                            <td class="px-4 py-2">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Link
+                                        :href="projectsRoutes.show(project.id).url"
+                                        title="Open"
+                                        class="text-muted-foreground hover:text-foreground"
+                                    >
+                                        <ExternalLink class="h-4 w-4" />
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        :title="project.archived_at ? 'Unarchive' : 'Archive'"
+                                        class="text-muted-foreground hover:text-foreground"
+                                        @click="toggleArchive(project)"
+                                    >
+                                        <Pencil class="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Delete"
+                                        class="text-muted-foreground hover:text-red-500"
+                                        @click="remove(project)"
+                                    >
+                                        <Trash2 class="h-4 w-4" />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CheckSquare, Flag, Plus, Tag as TagIcon } from 'lucide-vue-next';
+import { CheckSquare, Check, ExternalLink, Flag, Plus, Tag as TagIcon, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataToolbar from '@/components/DataToolbar.vue';
@@ -99,6 +99,19 @@ function priorityClass(color: string | undefined) {
         green: 'text-emerald-500',
         gray: 'text-zinc-400',
     } as Record<string, string>)[color] ?? 'text-zinc-400';
+}
+
+function toggleComplete(task: Task) {
+    router.patch(
+        tasksRoutes.update(task.id).url,
+        { completed: task.completed_at === null },
+        { preserveScroll: true },
+    );
+}
+
+function remove(task: Task) {
+    if (!confirm(`Delete "${task.title}"?`)) return;
+    router.delete(tasksRoutes.destroy(task.id).url, { preserveScroll: true });
 }
 
 function submit() {
@@ -308,6 +321,7 @@ function submit() {
                             <th class="px-4 py-2">Category</th>
                             <th class="px-4 py-2">Assignees</th>
                             <th class="px-4 py-2">Due</th>
+                            <th class="px-4 py-2 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -350,6 +364,33 @@ function submit() {
                             </td>
                             <td class="px-4 py-2 text-xs text-muted-foreground">
                                 {{ task.due_date ? new Date(task.due_date).toLocaleDateString() : '—' }}
+                            </td>
+                            <td class="px-4 py-2">
+                                <div class="flex items-center justify-end gap-2">
+                                    <Link
+                                        :href="tasksRoutes.show(task.id).url"
+                                        title="Open"
+                                        class="text-muted-foreground hover:text-foreground"
+                                    >
+                                        <ExternalLink class="h-4 w-4" />
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        :title="task.completed_at ? 'Reopen' : 'Mark complete'"
+                                        class="text-muted-foreground hover:text-emerald-500"
+                                        @click="toggleComplete(task)"
+                                    >
+                                        <Check class="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Delete"
+                                        class="text-muted-foreground hover:text-red-500"
+                                        @click="remove(task)"
+                                    >
+                                        <Trash2 class="h-4 w-4" />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

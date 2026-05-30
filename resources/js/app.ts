@@ -20,7 +20,10 @@ createInertiaApp({
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
             default:
-                return AppLayout;
+                // Pages already wrap themselves with <AppLayout> in their
+                // own templates; declaring it as a persistent layout here
+                // too would render the whole shell (sidebar + header) twice.
+                return null;
         }
     },
     progress: {
