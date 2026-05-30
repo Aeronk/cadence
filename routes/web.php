@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Activity\ActivityLogController;
+use App\Http\Controllers\Analytics\AnalyticsController;
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
@@ -78,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('calendar', CalendarController::class)->name('calendar.index');
 
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
+    Route::get('analytics', AnalyticsController::class)->name('analytics.index');
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');

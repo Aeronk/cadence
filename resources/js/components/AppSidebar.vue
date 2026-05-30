@@ -10,6 +10,7 @@ import {
     FileText,
     LayoutGrid,
     ListTodo,
+    BarChart3,
     Heart,
     Plane,
     StickyNote,
@@ -54,6 +55,7 @@ const mainNavItems: NavItem[] = [
     { title: 'Goals', href: '/goals', icon: Target },
     { title: 'Personal', href: '/personal-events', icon: Heart },
     { title: 'Clients', href: '/clients', icon: Briefcase },
+    { title: 'Analytics', href: '/analytics', icon: BarChart3 },
     { title: 'Activity', href: '/activity', icon: Activity },
     { title: 'Notifications', href: '/notifications', icon: Bell },
 ];
