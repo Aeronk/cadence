@@ -6,10 +6,12 @@ import {
     ArchiveRestore,
     Briefcase,
     Calendar,
+    FileText,
     Info,
     LayoutGrid,
     MessageSquare,
     Milestone as MilestoneIcon,
+    Paperclip,
     Pencil,
     Plus,
     Trash2,
@@ -19,6 +21,7 @@ import {
 import AppLayout from '@/layouts/AppLayout.vue';
 import CommentThread from '@/components/CommentThread.vue';
 import KanbanBoard from '@/components/KanbanBoard.vue';
+import ProjectFiles from '@/components/ProjectFiles.vue';
 import RichEditor from '@/components/RichEditor.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,6 +74,15 @@ type Milestone = {
     position: number;
     creator: { id: number; name: string } | null;
 };
+type ProjectFile = {
+    id: number;
+    original_name: string;
+    mime_type: string | null;
+    size_bytes: number;
+    created_at: string;
+    uploaded_by: number;
+    uploader: { id: number; name: string } | null;
+};
 type Member = { id: number; name: string; email: string };
 
 const props = defineProps<{
@@ -79,16 +91,18 @@ const props = defineProps<{
     tasks: Task[];
     statuses: Status[];
     milestones: Milestone[];
+    files: ProjectFile[];
     workspace_members: Member[];
 }>();
 
 const page = usePage<{ auth: { user: { id: number } } }>();
 
-const tab = ref<'overview' | 'board' | 'milestones' | 'comments'>('overview');
+const tab = ref<'overview' | 'board' | 'milestones' | 'files' | 'comments'>('overview');
 const tabs = computed(() => [
     { id: 'overview' as const, label: 'Overview', icon: Info },
     { id: 'board' as const, label: 'Board', icon: LayoutGrid },
     { id: 'milestones' as const, label: `Milestones (${props.milestones.length})`, icon: MilestoneIcon },
+    { id: 'files' as const, label: `Files (${props.files.length})`, icon: Paperclip },
     { id: 'comments' as const, label: `Comments (${props.comments.length})`, icon: MessageSquare },
 ]);
 
@@ -391,7 +405,7 @@ function deleteMilestone(m: Milestone) {
 
             <!-- Kanban -->
             <section v-else-if="tab === 'board'">
-                <KanbanBoard :statuses="statuses" :tasks="tasks" />
+                <KanbanBoard :statuses="statuses" :tasks="tasks" :project-id="project.id" />
             </section>
 
             <!-- Milestones -->
@@ -500,6 +514,16 @@ function deleteMilestone(m: Milestone) {
                         </div>
                     </div>
                 </div>
+            </section>
+
+            <!-- Files -->
+            <section v-else-if="tab === 'files'">
+                <ProjectFiles
+                    :project-id="project.id"
+                    :files="files"
+                    :current-user-id="page.props.auth.user.id"
+                    :can-manage="true"
+                />
             </section>
 
             <!-- Comments -->

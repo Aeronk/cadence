@@ -55,6 +55,9 @@ class ProjectController extends Controller
             'milestones' => $project->milestones()
                 ->with('creator:id,name')
                 ->get(['id', 'title', 'description', 'due_date', 'progress', 'completed_at', 'position', 'created_by']),
+            'files' => $project->files()
+                ->with('uploader:id,name')
+                ->get(['id', 'original_name', 'mime_type', 'size_bytes', 'created_at', 'uploaded_by', 'project_id']),
             'workspace_members' => $project->workspace->members()
                 ->select('users.id', 'users.name', 'users.email')
                 ->orderBy('users.name')

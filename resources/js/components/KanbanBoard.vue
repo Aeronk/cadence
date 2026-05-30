@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Link, router } from '@inertiajs/vue3';
-import { Flag } from 'lucide-vue-next';
+import { Link, router, useForm } from '@inertiajs/vue3';
+import { Flag, Plus, X } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
-import tasksRoutes from '@/routes/tasks';
+import { Button } from '@/components/ui/button';
 
 type Status = { id: number; name: string; color: string; position: number; is_completed: boolean };
 type Priority = { id: number; name: string; color: string; level: number };
@@ -20,6 +20,7 @@ type Task = {
 const props = defineProps<{
     statuses: Status[];
     tasks: Task[];
+    projectId?: number;
 }>();
 
 const dragging = ref<Task | null>(null);
@@ -52,27 +53,51 @@ function onDrop(statusId: number) {
         overStatusId.value = null;
         return;
     }
-
     const id = dragging.value.id;
     dragging.value = null;
     overStatusId.value = null;
 
-    router.patch(
-        tasksRoutes.update(id).url,
-        { status_id: statusId },
-        { preserveScroll: true, preserveState: true },
-    );
+    router.patch(`/tasks/${id}`, { status_id: statusId }, { preserveScroll: true, preserveState: true });
 }
 
 function priorityClass(p: Priority | null) {
     if (!p) return '';
-    return {
+    return ({
         red: 'text-red-500',
         orange: 'text-orange-500',
         blue: 'text-blue-500',
         gray: 'text-zinc-400',
         green: 'text-emerald-500',
-    }[p.color] ?? 'text-zinc-400';
+    } as Record<string, string>)[p.color] ?? 'text-zinc-400';
+}
+
+// Inline "Add task" per column
+const addingForStatus = ref<number | null>(null);
+const addForm = useForm({
+    project_id: props.projectId ?? 0,
+    status_id: 0 as number,
+    title: '',
+});
+
+function startAdd(statusId: number) {
+    addingForStatus.value = statusId;
+    addForm.status_id = statusId;
+    addForm.title = '';
+}
+
+function cancelAdd() {
+    addingForStatus.value = null;
+    addForm.reset();
+}
+
+function submitAdd(e?: Event) {
+    e?.preventDefault();
+    if (!props.projectId || !addForm.title.trim()) return;
+    addForm.post('/tasks', {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => cancelAdd(),
+    });
 }
 </script>
 
@@ -102,13 +127,21 @@ function priorityClass(p: Priority | null) {
                     <span class="text-sm font-semibold">{{ col.name }}</span>
                     <span class="text-xs text-muted-foreground">{{ col.tasks.length }}</span>
                 </div>
+                <button
+                    v-if="projectId"
+                    title="Add task to this column"
+                    class="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                    @click="startAdd(col.id)"
+                >
+                    <Plus class="h-4 w-4" />
+                </button>
             </header>
 
             <div class="flex flex-col gap-2 px-2 pb-2">
                 <Link
                     v-for="task in col.tasks"
                     :key="task.id"
-                    :href="tasksRoutes.show(task.id).url"
+                    :href="`/tasks/${task.id}`"
                     draggable="true"
                     class="cursor-grab rounded-md border bg-card p-3 shadow-sm transition hover:border-primary"
                     :class="{ 'opacity-40': dragging?.id === task.id, 'opacity-60': task.completed_at }"
@@ -148,8 +181,46 @@ function priorityClass(p: Priority | null) {
                     </div>
                 </Link>
 
+                <form
+                    v-if="addingForStatus === col.id"
+                    class="space-y-2 rounded-md border bg-card p-3 shadow-sm"
+                    @submit="submitAdd"
+                >
+                    <textarea
+                        v-model="addForm.title"
+                        rows="2"
+                        placeholder="Task title…"
+                        class="w-full rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        required
+                        autofocus
+                        @keydown.enter.exact.prevent="submitAdd"
+                        @keydown.escape="cancelAdd"
+                    />
+                    <div class="flex items-center justify-between">
+                        <button
+                            type="button"
+                            class="rounded p-1 text-muted-foreground hover:text-foreground"
+                            @click="cancelAdd"
+                        >
+                            <X class="h-4 w-4" />
+                        </button>
+                        <Button type="submit" size="sm" :disabled="addForm.processing">
+                            Add task
+                        </Button>
+                    </div>
+                </form>
+
+                <button
+                    v-else-if="projectId"
+                    type="button"
+                    class="rounded-md border border-dashed py-2 text-center text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+                    @click="startAdd(col.id)"
+                >
+                    + Add task
+                </button>
+
                 <p
-                    v-if="col.tasks.length === 0"
+                    v-if="col.tasks.length === 0 && addingForStatus !== col.id && !projectId"
                     class="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground"
                 >
                     Drop tasks here

@@ -77,6 +77,11 @@ class Project extends Model
         return $this->hasMany(Milestone::class)->orderBy('position');
     }
 
+    public function files(): HasMany
+    {
+        return $this->hasMany(ProjectFile::class)->latest();
+    }
+
     public function isArchived(): bool
     {
         return $this->archived_at !== null;

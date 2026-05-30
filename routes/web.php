@@ -10,6 +10,7 @@ use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Meetings\MeetingController;
 use App\Http\Controllers\Milestones\MilestoneController;
 use App\Http\Controllers\Projects\ProjectArchiveController;
+use App\Http\Controllers\Projects\ProjectFileController;
 use App\Http\Controllers\Notes\NoteController;
 use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Projects\ProjectController;
@@ -35,6 +36,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('projects/{project}/archive', [ProjectArchiveController::class, 'store'])->name('projects.archive');
     Route::delete('projects/{project}/archive', [ProjectArchiveController::class, 'destroy'])->name('projects.unarchive');
+
+    Route::post('projects/{project}/files', [ProjectFileController::class, 'store'])->name('projects.files.store');
+    Route::get('files/{file}/download', [ProjectFileController::class, 'download'])->name('projects.files.download');
+    Route::delete('files/{file}', [ProjectFileController::class, 'destroy'])->name('projects.files.destroy');
 
     Route::post('milestones', [MilestoneController::class, 'store'])->name('milestones.store');
     Route::patch('milestones/{milestone}', [MilestoneController::class, 'update'])->name('milestones.update');
