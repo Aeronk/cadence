@@ -30,6 +30,7 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarRail,
 } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar/utils';
 import type { NavItem } from '@/types';
@@ -88,6 +89,8 @@ const mainNavItems: NavItem[] = [
             </div>
             <NavUser />
         </SidebarFooter>
+
+        <SidebarRail />
     </Sidebar>
     <slot />
 </template>

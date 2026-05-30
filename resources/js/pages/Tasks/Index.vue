@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CheckSquare, Flag, Plus, Tag as TagIcon } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import DataToolbar from '@/components/DataToolbar.vue';
+import RichEditor from '@/components/RichEditor.vue';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Dialog,
     DialogContent,
@@ -14,7 +14,9 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import RichEditor from '@/components/RichEditor.vue';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useViewMode } from '@/composables/useViewMode';
 import tasksRoutes from '@/routes/tasks';
 
 type Task = {
@@ -45,12 +47,35 @@ const form = useForm({
     category: '' as string,
 });
 
+const search = ref('');
+const completionFilter = ref<'all' | 'open' | 'done'>('open');
+const view = useViewMode('tasks', 'cards');
+
 function filterByCategory(value: string | null) {
     const query: Record<string, string | number> = {};
     if (props.filters.project_id) query.project_id = props.filters.project_id;
     if (value) query.category = value;
     router.get('/tasks', query, { preserveState: true, preserveScroll: true });
 }
+
+const filtered = computed(() => {
+    const q = search.value.trim().toLowerCase();
+    return props.tasks.filter((t) => {
+        if (completionFilter.value === 'open' && t.completed_at) return false;
+        if (completionFilter.value === 'done' && !t.completed_at) return false;
+        if (!q) return true;
+        const hay = [
+            t.title,
+            t.status?.name ?? '',
+            t.priority?.name ?? '',
+            t.category ?? '',
+            ...t.assignees.map((a) => a.name),
+        ]
+            .join(' ')
+            .toLowerCase();
+        return hay.includes(q);
+    });
+});
 
 function categoryPillClass(color: string) {
     return ({
@@ -161,7 +186,26 @@ function submit() {
                 Create a project first, then tasks can hang off it.
             </p>
 
-            <!-- Category filter chips -->
+            <DataToolbar
+                v-model="search"
+                v-model:view-mode="view"
+                placeholder="Search title, assignee, status…"
+                :count="filtered.length"
+                :total="tasks.length"
+            >
+                <template #filters>
+                    <select
+                        v-model="completionFilter"
+                        class="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                        <option value="open">Open</option>
+                        <option value="done">Done</option>
+                        <option value="all">All</option>
+                    </select>
+                </template>
+            </DataToolbar>
+
+            <!-- Category server-filter chips -->
             <div class="flex flex-wrap items-center gap-2">
                 <button
                     type="button"
@@ -169,7 +213,7 @@ function submit() {
                     :class="!filters.category ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-muted'"
                     @click="filterByCategory(null)"
                 >
-                    All
+                    All categories
                 </button>
                 <button
                     v-for="c in categories"
@@ -185,14 +229,15 @@ function submit() {
                 </button>
             </div>
 
-            <div v-if="tasks.length === 0" class="rounded-xl border border-dashed p-12 text-center">
+            <div v-if="filtered.length === 0" class="rounded-xl border border-dashed p-12 text-center">
                 <CheckSquare class="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                <p class="text-sm text-muted-foreground">No tasks yet.</p>
+                <p class="text-sm text-muted-foreground">No tasks match your filters.</p>
             </div>
 
-            <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <!-- Card view -->
+            <div v-else-if="view === 'cards'" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <Link
-                    v-for="task in tasks"
+                    v-for="task in filtered"
                     :key="task.id"
                     :href="tasksRoutes.show(task.id).url"
                     class="group flex flex-col rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-sm"
@@ -246,13 +291,69 @@ function submit() {
                         </div>
                     </div>
 
-                    <div
-                        v-if="task.due_date"
-                        class="mt-2 text-xs text-muted-foreground"
-                    >
+                    <div v-if="task.due_date" class="mt-2 text-xs text-muted-foreground">
                         Due {{ new Date(task.due_date).toLocaleDateString() }}
                     </div>
                 </Link>
+            </div>
+
+            <!-- Table view -->
+            <div v-else class="overflow-hidden rounded-xl border bg-card">
+                <table class="w-full text-sm">
+                    <thead class="border-b bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-2">Title</th>
+                            <th class="px-4 py-2">Status</th>
+                            <th class="px-4 py-2">Priority</th>
+                            <th class="px-4 py-2">Category</th>
+                            <th class="px-4 py-2">Assignees</th>
+                            <th class="px-4 py-2">Due</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="task in filtered"
+                            :key="task.id"
+                            class="border-b last:border-b-0 hover:bg-muted/30"
+                            :class="{ 'opacity-60': task.completed_at }"
+                        >
+                            <td class="px-4 py-2">
+                                <Link :href="tasksRoutes.show(task.id).url" class="font-medium hover:text-primary">
+                                    {{ task.title }}
+                                </Link>
+                            </td>
+                            <td class="px-4 py-2 text-xs text-muted-foreground">
+                                {{ task.status?.name ?? '—' }}
+                            </td>
+                            <td class="px-4 py-2 text-xs">
+                                <span v-if="task.priority" class="inline-flex items-center gap-1">
+                                    <Flag class="h-3 w-3" :class="priorityClass(task.priority.color)" />
+                                    {{ task.priority.name }}
+                                </span>
+                                <span v-else class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2">
+                                <span
+                                    v-if="task.category"
+                                    class="rounded-full px-2 py-0.5 text-xs capitalize"
+                                    :class="categoryPillClass(categories.find((c) => c.value === task.category)?.color ?? 'gray')"
+                                >
+                                    {{ task.category }}
+                                </span>
+                                <span v-else class="text-xs text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2 text-xs">
+                                <span v-for="(a, i) in task.assignees.slice(0, 3)" :key="a.id">
+                                    {{ a.name }}<span v-if="i < Math.min(task.assignees.length, 3) - 1">, </span>
+                                </span>
+                                <span v-if="!task.assignees.length" class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2 text-xs text-muted-foreground">
+                                {{ task.due_date ? new Date(task.due_date).toLocaleDateString() : '—' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </AppLayout>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Plus, Trash2, Pencil, Building2, Mail, Phone, Globe } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { Building2, Globe, Mail, Pencil, Phone, Plus, Trash2 } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import DataToolbar from '@/components/DataToolbar.vue';
+import RichEditor from '@/components/RichEditor.vue';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Dialog,
     DialogContent,
@@ -14,7 +14,9 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import RichEditor from '@/components/RichEditor.vue';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useViewMode } from '@/composables/useViewMode';
 import clientsRoutes from '@/routes/clients';
 
 type Client = {
@@ -28,10 +30,26 @@ type Client = {
     projects_count: number;
 };
 
-defineProps<{ clients: Client[] }>();
+const props = defineProps<{ clients: Client[] }>();
 
 const dialogOpen = ref(false);
 const editing = ref<Client | null>(null);
+const search = ref('');
+const contactFilter = ref<'all' | 'with-email' | 'with-phone'>('all');
+const view = useViewMode('clients', 'cards');
+
+const filtered = computed(() => {
+    const q = search.value.trim().toLowerCase();
+    return props.clients.filter((c) => {
+        if (contactFilter.value === 'with-email' && !c.email) return false;
+        if (contactFilter.value === 'with-phone' && !c.phone) return false;
+        if (!q) return true;
+        const hay = [c.name, c.company ?? '', c.email ?? '', c.phone ?? '', c.website ?? '']
+            .join(' ')
+            .toLowerCase();
+        return hay.includes(q);
+    });
+});
 
 const form = useForm({
     name: '',
@@ -142,17 +160,36 @@ function remove(client: Client) {
                 </Dialog>
             </div>
 
-            <div
-                v-if="clients.length === 0"
-                class="rounded-lg border border-dashed p-12 text-center"
+            <DataToolbar
+                v-model="search"
+                v-model:view-mode="view"
+                placeholder="Search clients, companies, emails…"
+                :count="filtered.length"
+                :total="clients.length"
             >
+                <template #filters>
+                    <select
+                        v-model="contactFilter"
+                        class="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                        <option value="all">All contacts</option>
+                        <option value="with-email">Has email</option>
+                        <option value="with-phone">Has phone</option>
+                    </select>
+                </template>
+            </DataToolbar>
+
+            <div v-if="filtered.length === 0" class="rounded-lg border border-dashed p-12 text-center">
                 <Building2 class="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-                <p class="text-sm text-muted-foreground">No clients yet.</p>
+                <p class="text-sm text-muted-foreground">
+                    {{ clients.length === 0 ? 'No clients yet.' : 'No clients match your filters.' }}
+                </p>
             </div>
 
-            <div v-else class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <!-- Card view -->
+            <div v-else-if="view === 'cards'" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div
-                    v-for="client in clients"
+                    v-for="client in filtered"
                     :key="client.id"
                     class="group rounded-lg border p-4 transition hover:border-primary"
                 >
@@ -203,6 +240,70 @@ function remove(client: Client) {
                         {{ client.projects_count }} project{{ client.projects_count === 1 ? '' : 's' }}
                     </div>
                 </div>
+            </div>
+
+            <!-- Table view -->
+            <div v-else class="overflow-hidden rounded-xl border bg-card">
+                <table class="w-full text-sm">
+                    <thead class="border-b bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                        <tr>
+                            <th class="px-4 py-2">Name</th>
+                            <th class="px-4 py-2">Company</th>
+                            <th class="px-4 py-2">Email</th>
+                            <th class="px-4 py-2">Phone</th>
+                            <th class="px-4 py-2">Website</th>
+                            <th class="px-4 py-2">Projects</th>
+                            <th class="px-4 py-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            v-for="client in filtered"
+                            :key="client.id"
+                            class="border-b last:border-b-0 hover:bg-muted/30"
+                        >
+                            <td class="px-4 py-2 font-medium">{{ client.name }}</td>
+                            <td class="px-4 py-2 text-xs text-muted-foreground">{{ client.company ?? '—' }}</td>
+                            <td class="px-4 py-2 text-xs">
+                                <a
+                                    v-if="client.email"
+                                    :href="`mailto:${client.email}`"
+                                    class="hover:text-primary"
+                                >{{ client.email }}</a>
+                                <span v-else class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2 text-xs">
+                                <a
+                                    v-if="client.phone"
+                                    :href="`tel:${client.phone}`"
+                                    class="hover:text-primary"
+                                >{{ client.phone }}</a>
+                                <span v-else class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2 text-xs">
+                                <a
+                                    v-if="client.website"
+                                    :href="client.website"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="hover:text-primary"
+                                >{{ client.website }}</a>
+                                <span v-else class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-2 text-xs text-muted-foreground tabular-nums">
+                                {{ client.projects_count }}
+                            </td>
+                            <td class="px-4 py-2 text-right">
+                                <button class="mr-2" title="Edit" @click="open(client)">
+                                    <Pencil class="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                                </button>
+                                <button title="Delete" @click="remove(client)">
+                                    <Trash2 class="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </AppLayout>
