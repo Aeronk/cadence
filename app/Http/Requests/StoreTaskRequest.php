@@ -30,6 +30,8 @@ class StoreTaskRequest extends FormRequest
             'status_id' => ['nullable', Rule::exists('statuses', 'id')->where('workspace_id', $workspaceId)],
             'priority_id' => ['nullable', Rule::exists('priorities', 'id')->where('workspace_id', $workspaceId)],
             'category' => ['nullable', Rule::in(Category::values())],
+            'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
+            'recurrence_ends_on' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'assignee_ids' => ['nullable', 'array'],

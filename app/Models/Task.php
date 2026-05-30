@@ -26,6 +26,9 @@ class Task extends Model
         'status_id',
         'priority_id',
         'category',
+        'recurrence_rule',
+        'recurrence_ends_on',
+        'recurrence_parent_id',
         'created_by',
         'title',
         'description',
@@ -42,7 +45,35 @@ class Task extends Model
             'due_date' => 'date',
             'completed_at' => 'datetime',
             'position' => 'integer',
+            'recurrence_ends_on' => 'date',
         ];
+    }
+
+    public function isRecurring(): bool
+    {
+        return ! empty($this->recurrence_rule) && $this->recurrence_rule !== 'none';
+    }
+
+    public function nextOccurrenceDate(): ?\Carbon\CarbonImmutable
+    {
+        if (! $this->isRecurring() || ! $this->due_date) {
+            return null;
+        }
+
+        $next = match ($this->recurrence_rule) {
+            'daily' => $this->due_date->addDay(),
+            'weekly' => $this->due_date->addWeek(),
+            'monthly' => $this->due_date->addMonth(),
+            'yearly' => $this->due_date->addYear(),
+            default => null,
+        };
+
+        if (! $next) return null;
+        if ($this->recurrence_ends_on && $next->greaterThan($this->recurrence_ends_on)) {
+            return null;
+        }
+
+        return \Carbon\CarbonImmutable::parse($next);
     }
 
     protected static function booted(): void

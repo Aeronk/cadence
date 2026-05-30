@@ -97,6 +97,8 @@ class TaskController extends Controller
             'status_id' => $request->input('status_id'),
             'priority_id' => $request->input('priority_id'),
             'category' => $request->input('category'),
+            'recurrence_rule' => $request->input('recurrence_rule'),
+            'recurrence_ends_on' => $request->date('recurrence_ends_on'),
             'start_date' => $request->date('start_date'),
             'due_date' => $request->date('due_date'),
         ]);
@@ -131,7 +133,8 @@ class TaskController extends Controller
 
         $task->fill($request->only([
             'title', 'description', 'status_id', 'priority_id', 'milestone_id',
-            'category', 'start_date', 'due_date', 'position',
+            'category', 'recurrence_rule', 'recurrence_ends_on',
+            'start_date', 'due_date', 'position',
         ]));
 
         if ($request->has('completed')) {

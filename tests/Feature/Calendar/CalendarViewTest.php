@@ -62,14 +62,14 @@ class CalendarViewTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('calendar.index', ['month' => '2026-08']))
+            ->get(route('calendar.index', ['view' => 'month', 'date' => '2026-08-01']))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('cursor_label', 'August 2026')
                 ->has('events', 1)
             );
 
         $this->actingAs($user)
-            ->get(route('calendar.index', ['month' => '2026-09']))
+            ->get(route('calendar.index', ['view' => 'month', 'date' => '2026-09-01']))
             ->assertInertia(fn (Assert $page) => $page->has('events', 0));
     }
 }

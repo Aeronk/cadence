@@ -42,6 +42,8 @@ class TodoController extends Controller
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
             'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
+            'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
+            'recurrence_ends_on' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
         ]);
 
@@ -63,6 +65,8 @@ class TodoController extends Controller
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
             'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
+            'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
+            'recurrence_ends_on' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'completed' => ['nullable', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],

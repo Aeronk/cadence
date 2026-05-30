@@ -18,10 +18,13 @@ class CalendarController extends Controller
         $workspace = $user->currentWorkspace();
         abort_unless($workspace !== null, 404);
 
-        $cursor = $this->parseMonth($request->string('month')->toString());
+        $view = $request->string('view')->toString() ?: 'month';
+        if (! in_array($view, ['day', 'week', 'month'], true)) {
+            $view = 'month';
+        }
 
-        $rangeStart = $cursor->startOfMonth()->startOfWeek(CarbonImmutable::SUNDAY);
-        $rangeEnd = $cursor->endOfMonth()->endOfWeek(CarbonImmutable::SATURDAY);
+        $cursor = $this->parseCursor($request->string('date')->toString(), $view);
+        [$rangeStart, $rangeEnd, $label, $prev, $next] = $this->rangeFor($view, $cursor);
 
         $meetings = Meeting::query()
             ->forWorkspace($workspace)
@@ -34,7 +37,7 @@ class CalendarController extends Controller
                     ->orWhereHas('attendees', fn ($q) => $q->where('users.id', $user->id));
             })
             ->orderBy('starts_at')
-            ->get(['id', 'title', 'starts_at', 'ends_at', 'location'])
+            ->get(['id', 'title', 'starts_at', 'ends_at', 'location', 'meeting_url', 'meeting_type'])
             ->map(fn ($m) => [
                 'id' => 'meeting-'.$m->id,
                 'source' => 'cadence',
@@ -42,7 +45,8 @@ class CalendarController extends Controller
                 'starts_at' => $m->starts_at->toIso8601String(),
                 'ends_at' => $m->ends_at->toIso8601String(),
                 'url' => route('meetings.show', $m->id),
-                'meta' => $m->location,
+                'meta' => $m->location ?: $m->meeting_url,
+                'meeting_type' => $m->meeting_type,
             ]);
 
         $external = CalendarEvent::query()
@@ -59,24 +63,62 @@ class CalendarController extends Controller
                 'ends_at' => $e->ends_at?->toIso8601String(),
                 'url' => null,
                 'meta' => $e->location,
+                'meeting_type' => null,
             ]);
 
         return Inertia::render('Calendar/Index', [
-            'cursor_iso' => $cursor->startOfMonth()->toIso8601String(),
-            'cursor_label' => $cursor->format('F Y'),
-            'prev_month' => $cursor->subMonth()->format('Y-m'),
-            'next_month' => $cursor->addMonth()->format('Y-m'),
+            'view' => $view,
+            'cursor_iso' => $cursor->toIso8601String(),
+            'cursor_label' => $label,
+            'prev_cursor' => $prev,
+            'next_cursor' => $next,
             'today_iso' => now()->toDateString(),
             'events' => $meetings->concat($external)->values(),
         ]);
     }
 
-    protected function parseMonth(?string $input): CarbonImmutable
+    protected function parseCursor(?string $input, string $view): CarbonImmutable
     {
         try {
-            return $input ? CarbonImmutable::parse($input.'-01') : CarbonImmutable::now()->startOfMonth();
+            $base = $input ? CarbonImmutable::parse($input) : CarbonImmutable::now();
         } catch (\Throwable) {
-            return CarbonImmutable::now()->startOfMonth();
+            $base = CarbonImmutable::now();
         }
+
+        return match ($view) {
+            'day' => $base->startOfDay(),
+            'week' => $base->startOfWeek(CarbonImmutable::SUNDAY),
+            default => $base->startOfMonth(),
+        };
+    }
+
+    /**
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable, 2: string, 3: string, 4: string}
+     */
+    protected function rangeFor(string $view, CarbonImmutable $cursor): array
+    {
+        return match ($view) {
+            'day' => [
+                $cursor,
+                $cursor->endOfDay(),
+                $cursor->format('l, F j, Y'),
+                $cursor->subDay()->toDateString(),
+                $cursor->addDay()->toDateString(),
+            ],
+            'week' => [
+                $cursor,
+                $cursor->endOfWeek(CarbonImmutable::SATURDAY),
+                $cursor->format('M j').' – '.$cursor->endOfWeek(CarbonImmutable::SATURDAY)->format('M j, Y'),
+                $cursor->subWeek()->toDateString(),
+                $cursor->addWeek()->toDateString(),
+            ],
+            default => [
+                $cursor->startOfMonth()->startOfWeek(CarbonImmutable::SUNDAY),
+                $cursor->endOfMonth()->endOfWeek(CarbonImmutable::SATURDAY),
+                $cursor->format('F Y'),
+                $cursor->subMonth()->toDateString(),
+                $cursor->addMonth()->toDateString(),
+            ],
+        };
     }
 }
