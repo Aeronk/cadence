@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Calendar;
 use App\Http\Controllers\Controller;
 use App\Models\CalendarEvent;
 use App\Models\Meeting;
+use App\Models\Trip;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -66,6 +67,31 @@ class CalendarController extends Controller
                 'meeting_type' => null,
             ]);
 
+        // Travel days — all dates between departs_at and returns_at for any
+        // trip belonging to the user that intersects the visible range.
+        $tripDays = [];
+        Trip::query()
+            ->forWorkspace($workspace)
+            ->where('user_id', $user->id)
+            ->intersectingRange($rangeStart, $rangeEnd)
+            ->whereNotIn('status', [Trip::STATUS_CANCELLED])
+            ->get(['id', 'name', 'destination_city', 'departs_at', 'returns_at'])
+            ->each(function ($trip) use (&$tripDays, $rangeStart, $rangeEnd) {
+                $cursor = $trip->departs_at->startOfDay();
+                $end = $trip->returns_at->startOfDay();
+                while ($cursor->lessThanOrEqualTo($end)) {
+                    if ($cursor->greaterThanOrEqualTo($rangeStart) && $cursor->lessThanOrEqualTo($rangeEnd)) {
+                        $tripDays[] = [
+                            'date' => $cursor->toDateString(),
+                            'trip_id' => $trip->id,
+                            'trip_name' => $trip->name,
+                            'destination' => $trip->destination_city,
+                        ];
+                    }
+                    $cursor = $cursor->addDay();
+                }
+            });
+
         return Inertia::render('Calendar/Index', [
             'view' => $view,
             'cursor_iso' => $cursor->toIso8601String(),
@@ -74,6 +100,7 @@ class CalendarController extends Controller
             'next_cursor' => $next,
             'today_iso' => now()->toDateString(),
             'events' => $meetings->concat($external)->values(),
+            'travel_days' => $tripDays,
         ]);
     }
 

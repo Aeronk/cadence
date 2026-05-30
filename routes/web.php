@@ -13,9 +13,11 @@ use App\Http\Controllers\Projects\ProjectArchiveController;
 use App\Http\Controllers\Projects\ProjectFileController;
 use App\Http\Controllers\Notes\NoteController;
 use App\Http\Controllers\Notifications\NotificationController;
+use App\Http\Controllers\Reminders\ReminderController;
 use App\Http\Controllers\Projects\ProjectController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\Todos\TodoController;
+use App\Http\Controllers\Trips\TripController;
 use App\Http\Controllers\Workspaces\SwitchWorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -44,6 +46,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('milestones', [MilestoneController::class, 'store'])->name('milestones.store');
     Route::patch('milestones/{milestone}', [MilestoneController::class, 'update'])->name('milestones.update');
     Route::delete('milestones/{milestone}', [MilestoneController::class, 'destroy'])->name('milestones.destroy');
+
+    // Trips + segments + checklist
+    Route::resource('trips', TripController::class)->except(['create', 'edit']);
+    Route::post('trips/{trip}/segments', [TripController::class, 'storeSegment'])->name('trips.segments.store');
+    Route::delete('trip-segments/{segment}', [TripController::class, 'destroySegment'])->name('trips.segments.destroy');
+    Route::post('trips/{trip}/checklist', [TripController::class, 'storeChecklistItem'])->name('trips.checklist.store');
+    Route::patch('trip-checklist/{item}/toggle', [TripController::class, 'toggleChecklistItem'])->name('trips.checklist.toggle');
+    Route::delete('trip-checklist/{item}', [TripController::class, 'destroyChecklistItem'])->name('trips.checklist.destroy');
+
+    Route::post('reminders', [ReminderController::class, 'store'])->name('reminders.store');
+    Route::delete('reminders/{reminder}', [ReminderController::class, 'destroy'])->name('reminders.destroy');
 
     Route::post('comments', [CommentController::class, 'store'])->name('comments.store');
     Route::patch('comments/{comment}', [CommentController::class, 'update'])->name('comments.update');

@@ -16,6 +16,8 @@ type CalendarEvent = {
     meeting_type: string | null;
 };
 
+type TravelDay = { date: string; trip_id: number; trip_name: string; destination: string | null };
+
 const props = defineProps<{
     view: 'day' | 'week' | 'month';
     cursor_iso: string;
@@ -24,6 +26,7 @@ const props = defineProps<{
     next_cursor: string;
     today_iso: string;
     events: CalendarEvent[];
+    travel_days: TravelDay[];
 }>();
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -85,6 +88,14 @@ const eventsByDay = computed(() => {
     for (const ev of props.events) {
         const key = ev.starts_at.slice(0, 10);
         (map[key] ||= []).push(ev);
+    }
+    return map;
+});
+
+const travelByDay = computed(() => {
+    const map: Record<string, TravelDay[]> = {};
+    for (const t of props.travel_days ?? []) {
+        (map[t.date] ||= []).push(t);
     }
     return map;
 });
@@ -173,6 +184,15 @@ const eventClass = (ev: CalendarEvent) =>
                                 {{ cell.date.getDate() }}
                             </span>
                         </button>
+                        <Link
+                            v-for="t in travelByDay[cell.iso] || []"
+                            :key="`tr-${t.trip_id}-${t.date}`"
+                            :href="`/trips/${t.trip_id}`"
+                            class="flex items-center gap-1 truncate rounded bg-orange-100 px-1.5 py-0.5 text-[11px] text-orange-800 dark:bg-orange-900/40 dark:text-orange-300"
+                            :title="`${t.trip_name}${t.destination ? ' · ' + t.destination : ''}`"
+                        >
+                            ✈ {{ t.destination || t.trip_name }}
+                        </Link>
                         <template v-for="ev in eventsByDay[cell.iso] || []" :key="ev.id">
                             <Link
                                 v-if="ev.url"
@@ -290,6 +310,9 @@ const eventClass = (ev: CalendarEvent) =>
                 </span>
                 <span class="flex items-center gap-1">
                     <span class="h-2 w-2 rounded-full bg-emerald-500" /> External (Google / Outlook)
+                </span>
+                <span class="flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-full bg-orange-500" /> Travel day
                 </span>
             </div>
         </div>
