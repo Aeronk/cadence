@@ -27,7 +27,10 @@ class TodoController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        return Inertia::render('Todos/Index', ['todos' => $todos]);
+        return Inertia::render('Todos/Index', [
+            'todos' => $todos,
+            'categories' => \App\Enums\Category::options(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -38,6 +41,7 @@ class TodoController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
             'due_date' => ['nullable', 'date'],
         ]);
 
@@ -58,6 +62,7 @@ class TodoController extends Controller
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
+            'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
             'due_date' => ['nullable', 'date'],
             'completed' => ['nullable', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],

@@ -22,8 +22,10 @@ class Task extends Model
         'workspace_id',
         'project_id',
         'parent_id',
+        'milestone_id',
         'status_id',
         'priority_id',
+        'category',
         'created_by',
         'title',
         'description',
@@ -62,6 +64,11 @@ class Task extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function milestone(): BelongsTo
+    {
+        return $this->belongsTo(Milestone::class);
     }
 
     public function parent(): BelongsTo

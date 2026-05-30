@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\Category;
 use App\Models\Project;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -23,10 +24,12 @@ class StoreTaskRequest extends FormRequest
                 Rule::exists('projects', 'id')->where('workspace_id', $workspaceId),
             ],
             'parent_id' => ['nullable', Rule::exists('tasks', 'id')->where('workspace_id', $workspaceId)],
+            'milestone_id' => ['nullable', Rule::exists('milestones', 'id')->where('workspace_id', $workspaceId)],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'status_id' => ['nullable', Rule::exists('statuses', 'id')->where('workspace_id', $workspaceId)],
             'priority_id' => ['nullable', Rule::exists('priorities', 'id')->where('workspace_id', $workspaceId)],
+            'category' => ['nullable', Rule::in(Category::values())],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'assignee_ids' => ['nullable', 'array'],

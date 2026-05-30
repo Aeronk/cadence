@@ -13,17 +13,38 @@ type Todo = {
     id: number;
     title: string;
     priority: Priority;
+    category: string | null;
     due_date: string | null;
     completed_at: string | null;
 };
+type CategoryOption = { value: string; label: string; color: string };
 
-const props = defineProps<{ todos: Todo[] }>();
+const props = defineProps<{ todos: Todo[]; categories: CategoryOption[] }>();
 
-const form = useForm<{ title: string; priority: Priority; due_date: string }>({
+const form = useForm<{
+    title: string;
+    priority: Priority;
+    category: string;
+    due_date: string;
+}>({
     title: '',
     priority: 'medium',
+    category: '',
     due_date: '',
 });
+
+function categoryPillClass(color: string) {
+    return ({
+        blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+        purple: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+        pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+        amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+        rose: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+        sky: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+        emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+        green: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    } as Record<string, string>)[color] ?? 'bg-muted text-muted-foreground';
+}
 
 const PRIORITY_META: Record<Priority, { label: string; pill: string; flame: string }> = {
     low: {
@@ -60,7 +81,7 @@ const sorted = computed(() =>
 
 function add() {
     form.post(todosRoutes.store().url, {
-        onSuccess: () => form.reset('title', 'due_date'),
+        onSuccess: () => form.reset('title', 'due_date', 'category'),
     });
 }
 
@@ -89,10 +110,15 @@ function remove(todo: Todo) {
             <h1 class="text-2xl font-bold">My todos</h1>
 
             <form
-                class="grid grid-cols-[1fr,auto,auto,auto] gap-2 rounded-lg border p-3"
+                class="flex flex-wrap items-center gap-2 rounded-lg border p-3"
                 @submit.prevent="add"
             >
-                <Input v-model="form.title" placeholder="What needs doing?" required />
+                <Input
+                    v-model="form.title"
+                    placeholder="What needs doing?"
+                    required
+                    class="min-w-[12rem] flex-1"
+                />
 
                 <select
                     v-model="form.priority"
@@ -102,6 +128,17 @@ function remove(todo: Todo) {
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
+                </select>
+
+                <select
+                    v-model="form.category"
+                    class="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                    title="Category"
+                >
+                    <option value="">No category</option>
+                    <option v-for="c in categories" :key="c.value" :value="c.value">
+                        {{ c.label }}
+                    </option>
                 </select>
 
                 <Input
@@ -148,6 +185,16 @@ function remove(todo: Todo) {
                             {{ todo.title }}
                         </span>
                     </label>
+
+                    <span
+                        v-if="todo.category"
+                        class="hidden rounded-full px-2 py-0.5 text-[10px] capitalize sm:inline"
+                        :class="categoryPillClass(
+                            categories.find((c) => c.value === todo.category)?.color ?? 'gray',
+                        )"
+                    >
+                        {{ todo.category }}
+                    </span>
 
                     <span
                         v-if="todo.due_date"

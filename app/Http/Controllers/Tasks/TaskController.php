@@ -34,6 +34,10 @@ class TaskController extends Controller
             $query->where('project_id', $projectId);
         }
 
+        if ($category = $request->string('category')->toString()) {
+            $query->where('category', $category);
+        }
+
         if (! $workspace->roleFor($user)?->canManageWorkspace()) {
             $query->where(function ($q) use ($user) {
                 $q->where('created_by', $user->id)
@@ -44,7 +48,11 @@ class TaskController extends Controller
 
         return Inertia::render('Tasks/Index', [
             'tasks' => $query->orderBy('position')->get(),
-            'filters' => ['project_id' => $request->integer('project_id') ?: null],
+            'filters' => [
+                'project_id' => $request->integer('project_id') ?: null,
+                'category' => $request->string('category')->toString() ?: null,
+            ],
+            'categories' => \App\Enums\Category::options(),
             'projects_for_select' => Project::query()
                 ->forWorkspace($workspace)
                 ->when(! $workspace->roleFor($user)?->canManageWorkspace(), function ($q) use ($user) {
@@ -63,8 +71,12 @@ class TaskController extends Controller
         $this->authorize('view', $task);
 
         return Inertia::render('Tasks/Show', [
-            'task' => $task->load(['status', 'priority', 'creator', 'assignees', 'tags', 'subtasks']),
+            'task' => $task->load(['status', 'priority', 'creator', 'assignees', 'tags', 'subtasks', 'milestone']),
             'comments' => $task->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
+            'milestones_for_select' => $task->project
+                ->milestones()
+                ->get(['id', 'title']),
+            'categories' => \App\Enums\Category::options(),
         ]);
     }
 
@@ -78,11 +90,13 @@ class TaskController extends Controller
             'project_id' => $project->id,
             'workspace_id' => $project->workspace_id,
             'parent_id' => $request->input('parent_id'),
+            'milestone_id' => $request->input('milestone_id'),
             'created_by' => $request->user()->id,
             'title' => $request->string('title'),
             'description' => $request->input('description'),
             'status_id' => $request->input('status_id'),
             'priority_id' => $request->input('priority_id'),
+            'category' => $request->input('category'),
             'start_date' => $request->date('start_date'),
             'due_date' => $request->date('due_date'),
         ]);
@@ -116,7 +130,8 @@ class TaskController extends Controller
         $this->authorize('update', $task);
 
         $task->fill($request->only([
-            'title', 'description', 'status_id', 'priority_id', 'start_date', 'due_date', 'position',
+            'title', 'description', 'status_id', 'priority_id', 'milestone_id',
+            'category', 'start_date', 'due_date', 'position',
         ]));
 
         if ($request->has('completed')) {

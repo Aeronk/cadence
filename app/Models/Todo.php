@@ -19,6 +19,7 @@ class Todo extends Model
         'title',
         'description',
         'priority',
+        'category',
         'due_date',
         'completed_at',
         'position',

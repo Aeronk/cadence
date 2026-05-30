@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\Category;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,6 +22,8 @@ class UpdateTaskRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'status_id' => ['nullable', Rule::exists('statuses', 'id')->where('workspace_id', $workspaceId)],
             'priority_id' => ['nullable', Rule::exists('priorities', 'id')->where('workspace_id', $workspaceId)],
+            'milestone_id' => ['nullable', Rule::exists('milestones', 'id')->where('workspace_id', $workspaceId)],
+            'category' => ['nullable', Rule::in(Category::values())],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'position' => ['nullable', 'integer', 'min:0'],
