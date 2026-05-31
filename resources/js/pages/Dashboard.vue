@@ -14,6 +14,7 @@ import {
     TrendingUp,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 import { dashboard } from '@/routes';
 
 type Stats = {
@@ -96,6 +97,7 @@ defineOptions({
 <template>
     <Head title="Dashboard" />
 
+    <AppLayout :breadcrumbs="[{ title: 'Dashboard', href: '/dashboard' }]">
     <div class="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
         <!-- Hero banner -->
         <section
@@ -405,4 +407,5 @@ defineOptions({
             </div>
         </section>
     </div>
+    </AppLayout>
 </template>
