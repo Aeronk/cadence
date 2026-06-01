@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import {
     index as confirmOptions,
     store as confirmStore,
@@ -11,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { store } from '@/routes/password/confirm';
+
+const currentUserEmail = computed(() => (usePage().props.auth as { user?: { email?: string } } | undefined)?.user?.email ?? '');
 
 defineOptions({
     layout: {
@@ -40,6 +43,16 @@ defineOptions({
         v-slot="{ errors, processing }"
     >
         <div class="space-y-6">
+            <input
+                type="email"
+                name="email"
+                autocomplete="username"
+                :value="currentUserEmail"
+                aria-hidden="true"
+                tabindex="-1"
+                class="sr-only"
+                readonly
+            />
             <div class="grid gap-2">
                 <Label htmlFor="password">Password</Label>
                 <PasswordInput

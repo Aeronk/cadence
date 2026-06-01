@@ -22,7 +22,7 @@ function clear() {
 </script>
 
 <template>
-    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2">
+    <div class="sticky top-14 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card/95 px-3 py-2 backdrop-blur">
         <div class="relative min-w-[220px] flex-1 max-w-md">
             <Search class="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input

@@ -19,7 +19,10 @@ export async function getEcho(): Promise<EchoInstance | null> {
     if (echoPromise) return echoPromise;
 
     const key = import.meta.env.VITE_REVERB_APP_KEY as string | undefined;
-    if (!key) return null;
+    // Guard against missing / placeholder keys. A literal ellipsis (…) or an
+    // obviously short value means the .env wasn't populated and Pusher would
+    // otherwise retry the wss handshake forever, spamming the console.
+    if (!key || key.length < 4 || /[…]/.test(key)) return null;
 
     echoPromise = (async () => {
         try {

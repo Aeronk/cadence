@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import SecurityController from '@/actions/App/Http/Controllers/Settings/SecurityController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -18,6 +19,10 @@ type Props = {
     ManageTwoFactorProps;
 
 const props = defineProps<Props>();
+
+const currentUserEmail = computed(
+    () => (usePage().props.auth as { user?: { email?: string } } | undefined)?.user?.email ?? '',
+);
 
 defineOptions({
     layout: {
@@ -57,6 +62,16 @@ defineOptions({
             class="space-y-6"
             v-slot="{ errors, processing }"
         >
+            <input
+                type="email"
+                name="email"
+                autocomplete="username"
+                :value="currentUserEmail"
+                aria-hidden="true"
+                tabindex="-1"
+                class="sr-only"
+                readonly
+            />
             <div class="grid gap-2">
                 <Label for="current_password">Current password</Label>
                 <PasswordInput
