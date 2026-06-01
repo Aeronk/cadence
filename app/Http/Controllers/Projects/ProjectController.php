@@ -35,6 +35,8 @@ class ProjectController extends Controller
         return Inertia::render('Projects/Index', [
             'projects' => $projects,
             'workspace' => $workspace,
+            'statuses' => $workspace->statuses()->orderBy('position')->get(['id', 'name', 'color']),
+            'priorities' => $workspace->priorities()->orderBy('level')->get(['id', 'name', 'color']),
         ]);
     }
 
@@ -52,6 +54,9 @@ class ProjectController extends Controller
             'statuses' => $project->workspace->statuses()
                 ->orderBy('position')
                 ->get(['id', 'name', 'color', 'position', 'is_completed']),
+            'priorities' => $project->workspace->priorities()
+                ->orderBy('level')
+                ->get(['id', 'name', 'color', 'level']),
             'milestones' => $project->milestones()
                 ->with('creator:id,name')
                 ->get(['id', 'title', 'description', 'due_date', 'progress', 'completed_at', 'position', 'created_by']),
@@ -81,6 +86,9 @@ class ProjectController extends Controller
             'priority_id' => $request->input('priority_id'),
             'start_date' => $request->date('start_date'),
             'due_date' => $request->date('due_date'),
+            'budget' => $request->input('budget'),
+            'budget_currency' => $request->input('budget_currency'),
+            'state' => $request->input('state', Project::STATE_ACTIVE),
         ]);
 
         $project->members()->syncWithoutDetaching(
@@ -109,8 +117,18 @@ class ProjectController extends Controller
         $this->authorize('update', $project);
 
         $project->fill($request->only([
-            'title', 'description', 'status_id', 'priority_id', 'start_date', 'due_date',
-        ]))->save();
+            'title', 'description', 'status_id', 'priority_id',
+            'start_date', 'due_date', 'budget', 'budget_currency',
+        ]));
+
+        if ($request->filled('state') && in_array($request->input('state'), Project::STATES, true)) {
+            $newState = $request->input('state');
+            $project->state = $newState;
+            $project->completed_at = $newState === Project::STATE_COMPLETED ? now() : null;
+            $project->on_hold_at = $newState === Project::STATE_ON_HOLD ? now() : null;
+        }
+
+        $project->save();
 
         if ($request->has('member_ids')) {
             $project->members()->sync(

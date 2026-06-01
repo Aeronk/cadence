@@ -28,14 +28,27 @@ class Project extends Model
         'description',
         'start_date',
         'due_date',
+        'budget',
+        'budget_currency',
+        'state',
+        'completed_at',
+        'on_hold_at',
         'archived_at',
     ];
+
+    public const STATE_ACTIVE = 'active';
+    public const STATE_ON_HOLD = 'on_hold';
+    public const STATE_COMPLETED = 'completed';
+    public const STATES = [self::STATE_ACTIVE, self::STATE_ON_HOLD, self::STATE_COMPLETED];
 
     protected function casts(): array
     {
         return [
             'start_date' => 'date',
             'due_date' => 'date',
+            'budget' => 'decimal:2',
+            'completed_at' => 'datetime',
+            'on_hold_at' => 'datetime',
             'archived_at' => 'datetime',
         ];
     }

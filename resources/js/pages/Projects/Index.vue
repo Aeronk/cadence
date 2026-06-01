@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ExternalLink, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-vue-next';
+import { Archive, ArchiveRestore, ExternalLink, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataToolbar from '@/components/DataToolbar.vue';
@@ -25,14 +25,35 @@ type Project = {
     description: string | null;
     status: { id: number; name: string; color: string } | null;
     priority: { id: number; name: string; color: string } | null;
+    status_id: number | null;
+    priority_id: number | null;
     tags: { id: number; name: string; color: string }[];
     creator: { id: number; name: string };
     created_at: string;
+    start_date?: string | null;
     due_date?: string | null;
+    budget?: string | null;
+    budget_currency?: string | null;
+    state?: 'active' | 'on_hold' | 'completed';
     archived_at?: string | null;
 };
 
-const props = defineProps<{ projects: Project[] }>();
+type Option = { id: number; name: string; color: string };
+
+const props = defineProps<{ projects: Project[]; statuses: Option[]; priorities: Option[] }>();
+
+const colorPill = (color: string | undefined) => ({
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    purple: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    sky: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+    gray: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+} as Record<string, string>)[color ?? 'gray'] ?? 'bg-muted text-muted-foreground';
 
 const dotColor = (color: string | undefined) => {
     if (!color) return 'bg-zinc-400';
@@ -80,7 +101,49 @@ const filtered = computed(() => {
 });
 
 const dialogOpen = ref(false);
-const form = useForm({ title: '', description: '' });
+const form = useForm({
+    title: '',
+    description: '',
+    status_id: '' as number | '',
+    priority_id: '' as number | '',
+    budget: '' as string,
+    budget_currency: 'USD',
+    start_date: '',
+    due_date: '',
+});
+
+// Inline edit
+const editOpen = ref(false);
+const editing = ref<Project | null>(null);
+const editForm = useForm({
+    title: '',
+    status_id: '' as number | '',
+    priority_id: '' as number | '',
+    budget: '' as string,
+    budget_currency: 'USD',
+    start_date: '',
+    due_date: '',
+});
+
+function openEdit(project: Project) {
+    editing.value = project;
+    editForm.title = project.title;
+    editForm.status_id = project.status_id ?? '';
+    editForm.priority_id = project.priority_id ?? '';
+    editForm.budget = project.budget ?? '';
+    editForm.budget_currency = project.budget_currency ?? 'USD';
+    editForm.start_date = project.start_date ?? '';
+    editForm.due_date = project.due_date ?? '';
+    editOpen.value = true;
+}
+
+function saveEdit() {
+    if (!editing.value) return;
+    editForm.patch(projectsRoutes.update(editing.value.id).url, {
+        preserveScroll: true,
+        onSuccess: () => (editOpen.value = false),
+    });
+}
 
 function toggleArchive(project: Project) {
     const url = `/projects/${project.id}/archive`;
@@ -134,6 +197,50 @@ function submit() {
                                 <Label>Description</Label>
                                 <RichEditor v-model="form.description" placeholder="What is this project about?" />
                             </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <Label for="create-status">Status</Label>
+                                    <select
+                                        id="create-status"
+                                        v-model="form.status_id"
+                                        class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    >
+                                        <option value="">—</option>
+                                        <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <Label for="create-priority">Priority</Label>
+                                    <select
+                                        id="create-priority"
+                                        v-model="form.priority_id"
+                                        class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    >
+                                        <option value="">—</option>
+                                        <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <Label for="create-start">Start</Label>
+                                    <Input id="create-start" v-model="form.start_date" type="date" />
+                                </div>
+                                <div>
+                                    <Label for="create-due">Due</Label>
+                                    <Input id="create-due" v-model="form.due_date" type="date" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-2">
+                                    <Label for="create-budget">Budget</Label>
+                                    <Input id="create-budget" v-model="form.budget" type="number" step="0.01" min="0" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <Label for="create-currency">Currency</Label>
+                                    <Input id="create-currency" v-model="form.budget_currency" maxlength="3" />
+                                </div>
+                            </div>
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">Create</Button>
                             </DialogFooter>
@@ -141,6 +248,67 @@ function submit() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            <Dialog v-model:open="editOpen">
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit project</DialogTitle>
+                    </DialogHeader>
+                    <form class="space-y-4" @submit.prevent="saveEdit">
+                        <div>
+                            <Label for="row-title">Title</Label>
+                            <Input id="row-title" v-model="editForm.title" required />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <Label for="row-status">Status</Label>
+                                <select
+                                    id="row-status"
+                                    v-model="editForm.status_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">—</option>
+                                    <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <Label for="row-priority">Priority</Label>
+                                <select
+                                    id="row-priority"
+                                    v-model="editForm.priority_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">—</option>
+                                    <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <Label for="row-start">Start</Label>
+                                <Input id="row-start" v-model="editForm.start_date" type="date" />
+                            </div>
+                            <div>
+                                <Label for="row-due">Due</Label>
+                                <Input id="row-due" v-model="editForm.due_date" type="date" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="col-span-2">
+                                <Label for="row-budget">Budget</Label>
+                                <Input id="row-budget" v-model="editForm.budget" type="number" step="0.01" min="0" placeholder="0.00" />
+                            </div>
+                            <div>
+                                <Label for="row-currency">Currency</Label>
+                                <Input id="row-currency" v-model="editForm.budget_currency" maxlength="3" />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" :disabled="editForm.processing">Save</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <DataToolbar
                 v-model="search"
@@ -211,17 +379,23 @@ function submit() {
                         <div class="flex flex-wrap items-center gap-1.5 text-xs">
                             <span
                                 v-if="project.status"
-                                class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5"
+                                class="rounded-full px-2 py-0.5"
+                                :class="colorPill(project.status.color)"
                             >
-                                <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.status.color)]" />
                                 {{ project.status.name }}
                             </span>
                             <span
                                 v-if="project.priority"
-                                class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5"
+                                class="rounded-full px-2 py-0.5"
+                                :class="colorPill(project.priority.color)"
                             >
-                                <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.priority.color)]" />
-                                {{ project.priority.name }}
+                                ⚑ {{ project.priority.name }}
+                            </span>
+                            <span
+                                v-if="project.budget"
+                                class="rounded-full bg-green-100 px-2 py-0.5 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                            >
+                                {{ project.budget_currency ?? '' }} {{ Number(project.budget).toLocaleString() }}
                             </span>
                             <span
                                 v-for="tag in project.tags.slice(0, 3)"
@@ -278,19 +452,25 @@ function submit() {
                                     archived
                                 </span>
                             </td>
-                            <td class="px-4 py-2 text-xs text-muted-foreground">
-                                <span v-if="project.status" class="inline-flex items-center gap-1.5">
-                                    <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.status.color)]" />
+                            <td class="px-4 py-2 text-xs">
+                                <span
+                                    v-if="project.status"
+                                    class="rounded-full px-2 py-0.5"
+                                    :class="colorPill(project.status.color)"
+                                >
                                     {{ project.status.name }}
                                 </span>
-                                <span v-else>—</span>
+                                <span v-else class="text-muted-foreground">—</span>
                             </td>
-                            <td class="px-4 py-2 text-xs text-muted-foreground">
-                                <span v-if="project.priority" class="inline-flex items-center gap-1.5">
-                                    <span :class="['h-1.5 w-1.5 rounded-full', dotColor(project.priority.color)]" />
+                            <td class="px-4 py-2 text-xs">
+                                <span
+                                    v-if="project.priority"
+                                    class="rounded-full px-2 py-0.5"
+                                    :class="colorPill(project.priority.color)"
+                                >
                                     {{ project.priority.name }}
                                 </span>
-                                <span v-else>—</span>
+                                <span v-else class="text-muted-foreground">—</span>
                             </td>
                             <td class="px-4 py-2 text-xs">{{ project.creator.name }}</td>
                             <td class="px-4 py-2">
@@ -316,11 +496,19 @@ function submit() {
                                     </Link>
                                     <button
                                         type="button"
+                                        title="Edit"
+                                        class="text-muted-foreground hover:text-foreground"
+                                        @click="openEdit(project)"
+                                    >
+                                        <Pencil class="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
                                         :title="project.archived_at ? 'Unarchive' : 'Archive'"
                                         class="text-muted-foreground hover:text-foreground"
                                         @click="toggleArchive(project)"
                                     >
-                                        <Pencil class="h-4 w-4" />
+                                        <component :is="project.archived_at ? ArchiveRestore : Archive" class="h-4 w-4" />
                                     </button>
                                     <button
                                         type="button"

@@ -23,6 +23,9 @@ class StoreProjectRequest extends FormRequest
             'priority_id' => ['nullable', Rule::exists('priorities', 'id')->where('workspace_id', $workspaceId)],
             'start_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'budget' => ['nullable', 'numeric', 'min:0'],
+            'budget_currency' => ['nullable', 'string', 'size:3'],
+            'state' => ['nullable', Rule::in(\App\Models\Project::STATES)],
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => [
                 Rule::exists('workspace_user', 'user_id')->where('workspace_id', $workspaceId),

@@ -6,13 +6,17 @@ import {
     ArchiveRestore,
     Briefcase,
     Calendar,
+    CheckCircle2,
+    DollarSign,
     FileText,
     Info,
     LayoutGrid,
     MessageSquare,
     Milestone as MilestoneIcon,
+    PauseCircle,
     Paperclip,
     Pencil,
+    PlayCircle,
     Plus,
     Trash2,
     UserPlus,
@@ -41,14 +45,21 @@ type Project = {
     id: number;
     title: string;
     description: string | null;
-    status: { name: string; color: string } | null;
-    priority: { name: string; color: string } | null;
+    status: { id: number; name: string; color: string } | null;
+    priority: { id: number; name: string; color: string } | null;
+    status_id: number | null;
+    priority_id: number | null;
     creator: { name: string };
     members: { id: number; name: string; email: string }[];
     tags: { id: number; name: string; color: string }[];
     clients: { id: number; name: string; company: string | null }[];
     start_date: string | null;
     due_date: string | null;
+    budget: string | null;
+    budget_currency: string | null;
+    state: 'active' | 'on_hold' | 'completed';
+    completed_at: string | null;
+    on_hold_at: string | null;
     archived_at: string | null;
 };
 type Comment = { id: number; body: string; user: { id: number; name: string }; created_at: string };
@@ -90,10 +101,24 @@ const props = defineProps<{
     comments: Comment[];
     tasks: Task[];
     statuses: Status[];
+    priorities: Priority[];
     milestones: Milestone[];
     files: ProjectFile[];
     workspace_members: Member[];
 }>();
+
+const colorPill = (color: string | undefined) => ({
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    purple: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    sky: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+    gray: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+} as Record<string, string>)[color ?? 'gray'] ?? 'bg-muted text-muted-foreground';
 
 const page = usePage<{ auth: { user: { id: number } } }>();
 
@@ -115,6 +140,10 @@ const editForm = useForm({
     description: props.project.description ?? '',
     start_date: props.project.start_date ?? '',
     due_date: props.project.due_date ?? '',
+    status_id: props.project.status_id ?? '',
+    priority_id: props.project.priority_id ?? '',
+    budget: props.project.budget ?? '',
+    budget_currency: props.project.budget_currency ?? 'USD',
 });
 
 function saveEdit() {
@@ -122,6 +151,14 @@ function saveEdit() {
         preserveScroll: true,
         onSuccess: () => (editOpen.value = false),
     });
+}
+
+function transition(state: 'active' | 'on_hold' | 'completed') {
+    router.patch(
+        projectsRoutes.update(props.project.id).url,
+        { state },
+        { preserveScroll: true },
+    );
 }
 
 function deleteProject() {
@@ -223,6 +260,18 @@ function deleteMilestone(m: Milestone) {
                         <div class="flex items-center gap-2">
                             <h1 class="text-2xl font-bold">{{ project.title }}</h1>
                             <span
+                                v-if="project.state === 'completed'"
+                                class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                            >
+                                <CheckCircle2 class="h-3 w-3" /> Completed
+                            </span>
+                            <span
+                                v-else-if="project.state === 'on_hold'"
+                                class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                            >
+                                <PauseCircle class="h-3 w-3" /> On hold
+                            </span>
+                            <span
                                 v-if="isArchived"
                                 class="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
                             >
@@ -246,6 +295,42 @@ function deleteMilestone(m: Milestone) {
                         <Button variant="outline" size="sm" @click="editOpen = true">
                             <Pencil class="mr-1.5 h-3.5 w-3.5" /> Edit
                         </Button>
+                        <Button
+                            v-if="project.state !== 'completed'"
+                            variant="outline"
+                            size="sm"
+                            class="text-emerald-600 hover:text-emerald-700"
+                            title="Mark this project complete"
+                            @click="transition('completed')"
+                        >
+                            <CheckCircle2 class="mr-1.5 h-3.5 w-3.5" /> Mark complete
+                        </Button>
+                        <Button
+                            v-else
+                            variant="outline"
+                            size="sm"
+                            @click="transition('active')"
+                        >
+                            <PlayCircle class="mr-1.5 h-3.5 w-3.5" /> Reopen
+                        </Button>
+                        <Button
+                            v-if="project.state === 'active'"
+                            variant="outline"
+                            size="sm"
+                            class="text-amber-600 hover:text-amber-700"
+                            title="Pause work on this project"
+                            @click="transition('on_hold')"
+                        >
+                            <PauseCircle class="mr-1.5 h-3.5 w-3.5" /> On hold
+                        </Button>
+                        <Button
+                            v-else-if="project.state === 'on_hold'"
+                            variant="outline"
+                            size="sm"
+                            @click="transition('active')"
+                        >
+                            <PlayCircle class="mr-1.5 h-3.5 w-3.5" /> Resume
+                        </Button>
                         <Button variant="outline" size="sm" @click="toggleArchive">
                             <component :is="isArchived ? ArchiveRestore : Archive" class="mr-1.5 h-3.5 w-3.5" />
                             {{ isArchived ? 'Restore' : 'Archive' }}
@@ -257,13 +342,28 @@ function deleteMilestone(m: Milestone) {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2 text-xs">
-                    <span v-if="project.status" class="rounded-full bg-muted px-2 py-0.5">
+                    <span
+                        v-if="project.status"
+                        class="rounded-full px-2 py-0.5"
+                        :class="colorPill(project.status.color)"
+                    >
                         {{ project.status.name }}
                     </span>
-                    <span v-if="project.priority" class="rounded-full bg-muted px-2 py-0.5">
-                        Priority: {{ project.priority.name }}
+                    <span
+                        v-if="project.priority"
+                        class="rounded-full px-2 py-0.5"
+                        :class="colorPill(project.priority.color)"
+                    >
+                        ⚑ {{ project.priority.name }}
                     </span>
-                    <span v-for="tag in project.tags" :key="tag.id" class="rounded-full bg-muted px-2 py-0.5">
+                    <span
+                        v-if="project.budget"
+                        class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                    >
+                        <DollarSign class="h-3 w-3" />
+                        {{ project.budget_currency ?? '' }} {{ Number(project.budget).toLocaleString() }}
+                    </span>
+                    <span v-for="tag in project.tags" :key="tag.id" class="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
                         #{{ tag.name }}
                     </span>
                     <span
@@ -293,12 +393,53 @@ function deleteMilestone(m: Milestone) {
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
+                                <Label for="edit-status">Status</Label>
+                                <select
+                                    id="edit-status"
+                                    v-model="editForm.status_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">— None —</option>
+                                    <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <Label for="edit-priority">Priority</Label>
+                                <select
+                                    id="edit-priority"
+                                    v-model="editForm.priority_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">— None —</option>
+                                    <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
                                 <Label for="edit-start">Start date</Label>
                                 <Input id="edit-start" v-model="editForm.start_date" type="date" />
                             </div>
                             <div>
                                 <Label for="edit-due">Due date</Label>
                                 <Input id="edit-due" v-model="editForm.due_date" type="date" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="col-span-2">
+                                <Label for="edit-budget">Budget</Label>
+                                <Input
+                                    id="edit-budget"
+                                    v-model="editForm.budget"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div>
+                                <Label for="edit-currency">Currency</Label>
+                                <Input id="edit-currency" v-model="editForm.budget_currency" maxlength="3" placeholder="USD" />
                             </div>
                         </div>
                         <DialogFooter>
@@ -373,12 +514,17 @@ function deleteMilestone(m: Milestone) {
                         </span>
                     </div>
 
-                    <div v-if="memberCandidates.length" class="mt-4 flex items-center gap-2">
+                    <div class="mt-4 flex items-center gap-2">
                         <select
                             v-model="memberSelect"
-                            class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                            :disabled="memberCandidates.length === 0"
+                            class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-60"
                         >
-                            <option value="" disabled>Add workspace member…</option>
+                            <option value="" disabled>
+                                {{ memberCandidates.length === 0
+                                    ? 'All workspace members are already on this project'
+                                    : 'Add workspace member…' }}
+                            </option>
                             <option v-for="m in memberCandidates" :key="m.id" :value="m.id">
                                 {{ m.name }} ({{ m.email }})
                             </option>
@@ -387,6 +533,9 @@ function deleteMilestone(m: Milestone) {
                             <UserPlus class="mr-1.5 h-3.5 w-3.5" /> Add
                         </Button>
                     </div>
+                    <p v-if="workspace_members.length === 0" class="mt-2 text-xs text-muted-foreground">
+                        Invite teammates to your workspace from Settings → Workspace to assign them here.
+                    </p>
                 </div>
 
                 <div v-if="project.clients.length" class="rounded-lg border p-4 md:col-span-3">
