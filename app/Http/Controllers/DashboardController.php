@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\Meeting;
+use App\Models\PersonalEvent;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\Todo;
+use App\Models\Trip;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -82,7 +85,108 @@ class DashboardController extends Controller
                 ->limit(10)
                 ->get(['id', 'actor_id', 'action', 'description', 'created_at']),
             'charts' => $this->charts($user, $workspace),
+            'briefing' => $this->personalBriefing($user, $workspace),
         ]);
+    }
+
+    /**
+     * A short "hey {name}, here's what's coming up" list for the dashboard hero.
+     * Pulls trips, birthdays/anniversaries, meetings, and projects nearing their
+     * due date so the user lands in context.
+     */
+    protected function personalBriefing($user, $workspace): array
+    {
+        $now = CarbonImmutable::now();
+        $weekOut = $now->addDays(7);
+
+        $trips = Trip::query()
+            ->forWorkspace($workspace)
+            ->where('user_id', $user->id)
+            ->where('departs_at', '>=', $now)
+            ->where('departs_at', '<=', $weekOut)
+            ->orderBy('departs_at')
+            ->limit(3)
+            ->get(['id', 'destination', 'departs_at'])
+            ->map(fn ($t) => [
+                'id' => $t->id,
+                'destination' => $t->destination,
+                'departs_at' => $t->departs_at->toDateString(),
+                'days_away' => max(0, (int) $now->diffInDays($t->departs_at, false)),
+            ])
+            ->all();
+
+        $events = PersonalEvent::query()
+            ->where('user_id', $user->id)
+            ->get(['id', 'title', 'category', 'event_date', 'recurs_yearly'])
+            ->flatMap(function ($ev) use ($now, $weekOut) {
+                $hits = [];
+                $start = (int) $now->format('Y');
+                $end = (int) $weekOut->format('Y');
+                $base = CarbonImmutable::parse($ev->event_date);
+                for ($y = $start; $y <= $end; $y++) {
+                    $candidate = $ev->recurs_yearly ? $base->setYear($y) : $base;
+                    if ($candidate->gte($now->startOfDay()) && $candidate->lte($weekOut)) {
+                        $hits[] = [
+                            'id' => $ev->id,
+                            'title' => $ev->title,
+                            'category' => $ev->category,
+                            'date' => $candidate->toDateString(),
+                            'days_away' => max(0, (int) $now->diffInDays($candidate, false)),
+                        ];
+                    }
+                    if (! $ev->recurs_yearly) break;
+                }
+                return $hits;
+            })
+            ->sortBy('date')
+            ->values()
+            ->take(4)
+            ->all();
+
+        $meetings = Meeting::query()
+            ->forWorkspace($workspace)
+            ->where('starts_at', '>=', $now)
+            ->where('starts_at', '<=', $weekOut)
+            ->where(function ($q) use ($user) {
+                $q->where('host_id', $user->id)
+                    ->orWhereHas('attendees', fn ($q) => $q->where('users.id', $user->id));
+            })
+            ->with('host:id,name')
+            ->orderBy('starts_at')
+            ->limit(3)
+            ->get(['id', 'title', 'host_id', 'starts_at'])
+            ->map(fn ($m) => [
+                'id' => $m->id,
+                'title' => $m->title,
+                'host' => $m->host?->name,
+                'starts_at' => $m->starts_at->toIso8601String(),
+                'when' => $m->starts_at->isToday()
+                    ? 'today · '.$m->starts_at->format('H:i')
+                    : $m->starts_at->format('D j M · H:i'),
+            ])
+            ->all();
+
+        $projects = Project::query()
+            ->forWorkspace($workspace)
+            ->whereNotNull('due_date')
+            ->where('due_date', '>=', $now->toDateString())
+            ->where('due_date', '<=', $weekOut->toDateString())
+            ->whereNull('archived_at')
+            ->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                    ->orWhereHas('members', fn ($q) => $q->where('users.id', $user->id));
+            })
+            ->orderBy('due_date')
+            ->limit(3)
+            ->get(['id', 'title', 'due_date'])
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'title' => $p->title,
+                'due_date' => $p->due_date?->toDateString(),
+            ])
+            ->all();
+
+        return compact('trips', 'events', 'meetings', 'projects');
     }
 
     /**

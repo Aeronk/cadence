@@ -39,13 +39,43 @@ type Charts = {
     activity_14d: { day: string; label: string; count: number }[];
 };
 
+type Briefing = {
+    trips: { id: number; destination: string; departs_at: string; days_away: number }[];
+    events: { id: number; title: string; category: string | null; date: string; days_away: number }[];
+    meetings: { id: number; title: string; host: string | null; starts_at: string; when: string }[];
+    projects: { id: number; title: string; due_date: string }[];
+};
+
 const props = defineProps<{
     stats: Stats | null;
     my_tasks?: Task[];
     upcoming_meetings?: Meeting[];
     recent_activity?: ActivityEntry[];
     charts?: Charts;
+    briefing?: Briefing;
 }>();
+
+const briefingLines = computed(() => {
+    const lines: { icon: string; text: string }[] = [];
+    const b = props.briefing;
+    if (!b) return lines;
+    const dayLabel = (n: number) => (n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`);
+    b.trips.forEach((t) => lines.push({ icon: '✈', text: `Trip to ${t.destination} ${dayLabel(t.days_away)}` }));
+    b.events.forEach((e) => {
+        const verb = e.category === 'birthday' ? "Birthday for" : e.category === 'anniversary' ? 'Anniversary —' : '';
+        lines.push({ icon: '🎉', text: `${verb} ${e.title} ${dayLabel(e.days_away)}`.trim() });
+    });
+    b.meetings.forEach((m) =>
+        lines.push({
+            icon: '🗓',
+            text: `Meeting "${m.title}"${m.host ? ` with ${m.host}` : ''} ${m.when}`,
+        }),
+    );
+    b.projects.forEach((p) =>
+        lines.push({ icon: '📁', text: `Project "${p.title}" due ${new Date(p.due_date).toLocaleDateString()}` }),
+    );
+    return lines;
+});
 
 const page = usePage<{
     auth: {
@@ -122,6 +152,20 @@ defineOptions({
                     <p class="mt-1 text-sm text-muted-foreground">
                         Here's what's in motion today.
                     </p>
+
+                    <ul
+                        v-if="briefingLines.length"
+                        class="mt-4 space-y-1 text-sm"
+                    >
+                        <li
+                            v-for="(line, i) in briefingLines.slice(0, 6)"
+                            :key="i"
+                            class="flex items-start gap-2"
+                        >
+                            <span class="leading-5">{{ line.icon }}</span>
+                            <span>{{ line.text }}</span>
+                        </li>
+                    </ul>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
