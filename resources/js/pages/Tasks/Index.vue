@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CheckSquare, Check, ExternalLink, Flag, Plus, Tag as TagIcon, Trash2 } from 'lucide-vue-next';
+import { CheckSquare, Check, ExternalLink, Flag, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataToolbar from '@/components/DataToolbar.vue';
@@ -27,17 +27,23 @@ type Task = {
     due_date: string | null;
     category: string | null;
     project?: { id: number; title: string } | null;
+    project_id?: number | null;
+    status_id?: number | null;
+    priority_id?: number | null;
     status: { id: number; name: string; color: string } | null;
     priority: { id: number; name: string; color: string; level?: number } | null;
     assignees: { id: number; name: string }[];
 };
 type CategoryOption = { value: string; label: string; color: string };
+type TaxonomyOption = { id: number; name: string; color: string; level?: number };
 
 const props = defineProps<{
     tasks: Task[];
     filters: { project_id: number | null; category: string | null };
     projects_for_select: { id: number; title: string }[];
     categories: CategoryOption[];
+    statuses: TaxonomyOption[];
+    priorities: TaxonomyOption[];
 }>();
 
 const dialogOpen = ref(false);
@@ -140,9 +146,54 @@ function toggleComplete(task: Task) {
     );
 }
 
+function setStatus(task: Task, status_id: number | '') {
+    router.patch(
+        tasksRoutes.update(task.id).url,
+        { status_id: status_id === '' ? null : status_id },
+        { preserveScroll: true },
+    );
+}
+
+function setPriority(task: Task, priority_id: number | '') {
+    router.patch(
+        tasksRoutes.update(task.id).url,
+        { priority_id: priority_id === '' ? null : priority_id },
+        { preserveScroll: true },
+    );
+}
+
 function remove(task: Task) {
     if (!confirm(`Delete "${task.title}"?`)) return;
     router.delete(tasksRoutes.destroy(task.id).url, { preserveScroll: true });
+}
+
+// Edit dialog
+const editOpen = ref(false);
+const editing = ref<Task | null>(null);
+const editForm = useForm({
+    title: '',
+    status_id: '' as number | '',
+    priority_id: '' as number | '',
+    due_date: '',
+    category: '' as string,
+});
+
+function openEdit(task: Task) {
+    editing.value = task;
+    editForm.title = task.title;
+    editForm.status_id = task.status_id ?? '';
+    editForm.priority_id = task.priority_id ?? '';
+    editForm.due_date = task.due_date ?? '';
+    editForm.category = task.category ?? '';
+    editOpen.value = true;
+}
+
+function saveEdit() {
+    if (!editing.value) return;
+    editForm.patch(tasksRoutes.update(editing.value.id).url, {
+        preserveScroll: true,
+        onSuccess: () => (editOpen.value = false),
+    });
 }
 
 function submit() {
@@ -225,6 +276,64 @@ function submit() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            <Dialog v-model:open="editOpen">
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit task</DialogTitle>
+                    </DialogHeader>
+                    <form class="space-y-4" @submit.prevent="saveEdit">
+                        <div>
+                            <Label for="row-task-title">Title</Label>
+                            <Input id="row-task-title" v-model="editForm.title" required />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <Label for="row-task-status">Status</Label>
+                                <select
+                                    id="row-task-status"
+                                    v-model="editForm.status_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">—</option>
+                                    <option v-for="s in statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <Label for="row-task-priority">Priority</Label>
+                                <select
+                                    id="row-task-priority"
+                                    v-model="editForm.priority_id"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">—</option>
+                                    <option v-for="p in priorities" :key="p.id" :value="p.id">{{ p.name }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <Label for="row-task-due">Due date</Label>
+                                <Input id="row-task-due" v-model="editForm.due_date" type="date" />
+                            </div>
+                            <div>
+                                <Label for="row-task-category">Category</Label>
+                                <select
+                                    id="row-task-category"
+                                    v-model="editForm.category"
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option value="">—</option>
+                                    <option v-for="c in categories" :key="c.value" :value="c.value">{{ c.label }}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" :disabled="editForm.processing">Save</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <p v-if="projects_for_select.length === 0" class="text-sm text-muted-foreground">
                 Create a project first, then tasks can hang off it.
@@ -427,6 +536,14 @@ function submit() {
                                     >
                                         <ExternalLink class="h-4 w-4" />
                                     </Link>
+                                    <button
+                                        type="button"
+                                        title="Edit"
+                                        class="text-muted-foreground hover:text-foreground"
+                                        @click="openEdit(task)"
+                                    >
+                                        <Pencil class="h-4 w-4" />
+                                    </button>
                                     <button
                                         type="button"
                                         :title="task.completed_at ? 'Reopen' : 'Mark complete'"

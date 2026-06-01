@@ -53,6 +53,8 @@ class TaskController extends Controller
                 'category' => $request->string('category')->toString() ?: null,
             ],
             'categories' => \App\Enums\Category::options(),
+            'statuses' => $workspace->statuses()->orderBy('position')->get(['id', 'name', 'color']),
+            'priorities' => $workspace->priorities()->orderBy('level')->get(['id', 'name', 'color', 'level']),
             'projects_for_select' => Project::query()
                 ->forWorkspace($workspace)
                 ->when(! $workspace->roleFor($user)?->canManageWorkspace(), function ($q) use ($user) {

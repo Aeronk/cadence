@@ -9,6 +9,8 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\Todo;
 use App\Models\Trip;
+use App\Models\User;
+use App\Models\Workspace;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -94,7 +96,7 @@ class DashboardController extends Controller
      * Pulls trips, birthdays/anniversaries, meetings, and projects nearing their
      * due date so the user lands in context.
      */
-    protected function personalBriefing($user, $workspace): array
+    protected function personalBriefing(User $user, Workspace $workspace): array
     {
         $now = CarbonImmutable::now();
         $weekOut = $now->addDays(7);
@@ -106,10 +108,11 @@ class DashboardController extends Controller
             ->where('departs_at', '<=', $weekOut)
             ->orderBy('departs_at')
             ->limit(3)
-            ->get(['id', 'destination', 'departs_at'])
+            ->get(['id', 'name', 'destination_city', 'destination_country', 'departs_at'])
             ->map(fn ($t) => [
                 'id' => $t->id,
-                'destination' => $t->destination,
+                'destination' => trim(($t->destination_city ?? '').' '.($t->destination_country ?? '')) ?: $t->name,
+                'name' => $t->name,
                 'departs_at' => $t->departs_at->toDateString(),
                 'days_away' => max(0, (int) $now->diffInDays($t->departs_at, false)),
             ])
@@ -192,7 +195,7 @@ class DashboardController extends Controller
     /**
      * Lightweight chart series for the dashboard — small payloads, all aggregated.
      */
-    protected function charts($user, $workspace): array
+    protected function charts(User $user, Workspace $workspace): array
     {
         $weekStart = now()->startOfWeek();
 

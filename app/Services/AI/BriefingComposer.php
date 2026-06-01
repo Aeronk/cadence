@@ -57,8 +57,10 @@ class BriefingComposer
                 ->forWorkspace($workspace)
                 ->where('user_id', $user->id)
                 ->intersectingRange($dayStart, $dayEnd)
-                ->get(['destination', 'departs_at', 'returns_at'])
-                ->map(fn ($t) => ['destination' => $t->destination])
+                ->get(['name', 'destination_city', 'destination_country', 'departs_at', 'returns_at'])
+                ->map(fn ($t) => [
+                    'destination' => trim(($t->destination_city ?? '').' '.($t->destination_country ?? '')) ?: $t->name,
+                ])
                 ->all(),
         ];
 
