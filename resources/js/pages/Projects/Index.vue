@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataToolbar from '@/components/DataToolbar.vue';
 import RichEditor from '@/components/RichEditor.vue';
+import StatsBanner from '@/components/StatsBanner.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -72,6 +73,17 @@ const search = ref('');
 const statusFilter = ref<string>('all');
 const archivedFilter = ref<'all' | 'active' | 'archived'>('active');
 const view = useViewMode('projects', 'cards');
+
+const summaryStats = computed(() => {
+    const total = props.projects.length;
+    const active = props.projects.filter((p) => !p.archived_at && p.state !== 'completed').length;
+    const completed = props.projects.filter((p) => p.state === 'completed').length;
+    return [
+        { label: 'Total projects', value: total, color: 'blue' as const },
+        { label: 'Active', value: active, color: 'emerald' as const },
+        { label: 'Completed', value: completed, color: 'violet' as const },
+    ];
+});
 
 const statusOptions = computed(() => {
     const set = new Map<string, { name: string; color: string }>();
@@ -309,6 +321,8 @@ function submit() {
                     </form>
                 </DialogContent>
             </Dialog>
+
+            <StatsBanner :stats="summaryStats" />
 
             <DataToolbar
                 v-model="search"

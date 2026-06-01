@@ -88,7 +88,67 @@ class DashboardController extends Controller
                 ->get(['id', 'actor_id', 'action', 'description', 'created_at']),
             'charts' => $this->charts($user, $workspace),
             'briefing' => $this->personalBriefing($user, $workspace),
+            'status_overview' => $this->statusOverview($user, $workspace),
         ]);
+    }
+
+    /**
+     * "Project Status Overview" panel — counts of projects by state plus
+     * tasks grouped by their workspace status column.
+     */
+    protected function statusOverview(User $user, Workspace $workspace): array
+    {
+        $today = now()->toDateString();
+        $projectsQuery = Project::query()->forWorkspace($workspace);
+
+        $active = (clone $projectsQuery)
+            ->whereNull('archived_at')
+            ->where('state', Project::STATE_ACTIVE)
+            ->count();
+        $completed = (clone $projectsQuery)
+            ->where('state', Project::STATE_COMPLETED)
+            ->count();
+        $overdue = (clone $projectsQuery)
+            ->whereNull('archived_at')
+            ->where('state', '!=', Project::STATE_COMPLETED)
+            ->whereNotNull('due_date')
+            ->where('due_date', '<', $today)
+            ->count();
+        $totalProjects = (clone $projectsQuery)->count();
+        $overallProgress = $totalProjects > 0
+            ? (int) round(($completed / $totalProjects) * 100)
+            : 0;
+
+        $taskStages = $workspace->statuses()
+            ->orderBy('position')
+            ->get(['id', 'name', 'color'])
+            ->map(function ($status) use ($workspace, $user) {
+                $count = Task::query()
+                    ->forWorkspace($workspace)
+                    ->where('status_id', $status->id)
+                    ->where(function ($q) use ($user) {
+                        $q->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id))
+                            ->orWhere('created_by', $user->id);
+                    })
+                    ->count();
+                return [
+                    'name' => $status->name,
+                    'color' => $status->color,
+                    'count' => $count,
+                ];
+            })
+            ->all();
+
+        return [
+            'projects' => [
+                'active' => $active,
+                'completed' => $completed,
+                'overdue' => $overdue,
+                'total' => $totalProjects,
+                'overall_progress' => $overallProgress,
+            ],
+            'task_stages' => $taskStages,
+        ];
     }
 
     /**

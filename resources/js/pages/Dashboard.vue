@@ -46,6 +46,11 @@ type Briefing = {
     projects: { id: number; title: string; due_date: string }[];
 };
 
+type StatusOverview = {
+    projects: { active: number; completed: number; overdue: number; total: number; overall_progress: number };
+    task_stages: { name: string; color: string; count: number }[];
+};
+
 const props = defineProps<{
     stats: Stats | null;
     my_tasks?: Task[];
@@ -53,7 +58,32 @@ const props = defineProps<{
     recent_activity?: ActivityEntry[];
     charts?: Charts;
     briefing?: Briefing;
+    status_overview?: StatusOverview;
 }>();
+
+const stageColorPill = (color: string) =>
+    ({
+        blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+        green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+        orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+        amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+        red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+        purple: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+        pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+        gray: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    } as Record<string, string>)[color] ?? 'bg-muted text-muted-foreground';
+
+const stageDot = (color: string) =>
+    ({
+        blue: 'bg-blue-500',
+        green: 'bg-emerald-500',
+        orange: 'bg-orange-500',
+        amber: 'bg-amber-500',
+        red: 'bg-red-500',
+        purple: 'bg-violet-500',
+        pink: 'bg-pink-500',
+        gray: 'bg-zinc-400',
+    } as Record<string, string>)[color] ?? 'bg-zinc-400';
 
 const briefingLines = computed(() => {
     const lines: { icon: string; text: string }[] = [];
@@ -430,8 +460,122 @@ defineOptions({
             </section>
         </div>
 
-        <!-- Activity feed -->
-        <section class="rounded-xl border bg-card">
+        <!-- Project Status Overview -->
+        <section v-if="status_overview" class="grid gap-4 lg:grid-cols-3">
+            <div class="rounded-xl border bg-card p-5 lg:col-span-2">
+                <header class="mb-4 flex items-center justify-between">
+                    <h2 class="flex items-center gap-2 font-semibold">
+                        <span class="inline-block h-2 w-2 rounded-full bg-primary" />
+                        Project Status Overview
+                    </h2>
+                    <span class="rounded-full border px-2 py-0.5 text-xs tabular-nums">
+                        {{ status_overview.projects.total }} total
+                    </span>
+                </header>
+
+                <div class="grid gap-6 sm:grid-cols-2">
+                    <div>
+                        <p class="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Projects</p>
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-950/30">
+                                <span class="flex items-center gap-2">
+                                    <span class="h-2 w-2 rounded-full bg-emerald-500" /> Active
+                                </span>
+                                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                    {{ status_overview.projects.active }}
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
+                                <span class="flex items-center gap-2">
+                                    <span class="h-2 w-2 rounded-full bg-blue-500" /> Completed
+                                </span>
+                                <span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                    {{ status_overview.projects.completed }}
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
+                                <span class="flex items-center gap-2">
+                                    <span class="h-2 w-2 rounded-full bg-red-500" /> Overdue
+                                </span>
+                                <span class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-medium text-white">
+                                    {{ status_overview.projects.overdue }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="mb-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Task stages</p>
+                        <div v-if="!status_overview.task_stages.length" class="text-xs text-muted-foreground">
+                            No statuses defined.
+                        </div>
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="s in status_overview.task_stages"
+                                :key="s.name"
+                                class="flex items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-muted/40"
+                            >
+                                <span class="flex items-center gap-2">
+                                    <span class="h-2 w-2 rounded-full" :class="stageDot(s.color)" />
+                                    {{ s.name }}
+                                </span>
+                                <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="stageColorPill(s.color)">
+                                    {{ s.count }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 border-t pt-4">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-muted-foreground">Overall progress</span>
+                        <span class="font-medium tabular-nums">{{ status_overview.projects.overall_progress }}%</span>
+                    </div>
+                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div
+                            class="h-full rounded-full bg-emerald-500 transition-all"
+                            :style="{ width: status_overview.projects.overall_progress + '%' }"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity feed (with Live badge if WS connected) -->
+            <section class="rounded-xl border bg-card">
+                <header class="flex items-center justify-between gap-2 border-b px-4 py-3">
+                    <h2 class="flex items-center gap-2 font-semibold">
+                        <Activity class="h-4 w-4 text-muted-foreground" />
+                        Recent activity
+                    </h2>
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        <span class="relative flex h-1.5 w-1.5">
+                            <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                            <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        </span>
+                        Live
+                    </span>
+                </header>
+                <div v-if="!recent_activity?.length" class="px-4 py-10 text-center text-sm text-muted-foreground">
+                    No activity yet.
+                </div>
+                <div v-else class="max-h-96 overflow-y-auto">
+                    <div
+                        v-for="entry in recent_activity?.slice(0, 8)"
+                        :key="entry.id"
+                        class="border-b px-4 py-3 last:border-b-0 hover:bg-muted/30"
+                    >
+                        <p class="text-sm">{{ entry.description }}</p>
+                        <p class="mt-0.5 text-[11px] text-muted-foreground">
+                            {{ entry.actor?.name ?? 'System' }} · {{ new Date(entry.created_at).toLocaleString() }}
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <!-- Legacy activity feed fallback (kept for the old layout below) -->
+        <section v-if="!status_overview" class="rounded-xl border bg-card">
             <header class="flex items-center gap-2 border-b px-4 py-3">
                 <Activity class="h-4 w-4 text-muted-foreground" />
                 <h2 class="font-semibold">Recent activity</h2>
