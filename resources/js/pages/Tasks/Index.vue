@@ -22,9 +22,11 @@ import tasksRoutes from '@/routes/tasks';
 type Task = {
     id: number;
     title: string;
+    description?: string | null;
     completed_at: string | null;
     due_date: string | null;
     category: string | null;
+    project?: { id: number; title: string } | null;
     status: { id: number; name: string; color: string } | null;
     priority: { id: number; name: string; color: string; level?: number } | null;
     assignees: { id: number; name: string }[];
@@ -99,6 +101,35 @@ function priorityClass(color: string | undefined) {
         green: 'text-emerald-500',
         gray: 'text-zinc-400',
     } as Record<string, string>)[color] ?? 'text-zinc-400';
+}
+
+// Drives the left accent border + pill color for the task card.
+function priorityAccent(color: string | undefined) {
+    return ({
+        red: 'border-l-red-500 bg-red-50/40 dark:bg-red-950/20',
+        orange: 'border-l-orange-500 bg-orange-50/40 dark:bg-orange-950/20',
+        amber: 'border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/20',
+        blue: 'border-l-blue-500',
+        green: 'border-l-emerald-500',
+        gray: 'border-l-zinc-300 dark:border-l-zinc-700',
+        slate: 'border-l-slate-400',
+    } as Record<string, string>)[color ?? 'gray'] ?? 'border-l-zinc-300 dark:border-l-zinc-700';
+}
+
+function priorityPill(color: string | undefined) {
+    return ({
+        red: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+        orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+        amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+        blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+        green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+        gray: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    } as Record<string, string>)[color ?? 'gray'] ?? 'bg-zinc-100 text-zinc-700';
+}
+
+function isOverdue(task: Task): boolean {
+    if (!task.due_date || task.completed_at) return false;
+    return new Date(task.due_date) < new Date(new Date().toDateString());
 }
 
 function toggleComplete(task: Task) {
@@ -253,8 +284,8 @@ function submit() {
                     v-for="task in filtered"
                     :key="task.id"
                     :href="tasksRoutes.show(task.id).url"
-                    class="group flex flex-col rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-sm"
-                    :class="{ 'opacity-60': task.completed_at }"
+                    class="group flex flex-col rounded-xl border border-l-4 bg-card p-4 transition hover:border-primary hover:shadow-sm"
+                    :class="[priorityAccent(task.priority?.color), { 'opacity-60': task.completed_at }]"
                 >
                     <div class="flex items-start gap-3">
                         <input
@@ -263,18 +294,31 @@ function submit() {
                             class="mt-1 h-4 w-4 shrink-0"
                             @click.stop
                         />
-                        <p
-                            class="min-w-0 flex-1 text-sm font-medium leading-snug group-hover:text-primary"
-                            :class="{ 'line-through text-muted-foreground': task.completed_at }"
-                        >
-                            {{ task.title }}
-                        </p>
-                        <Flag
+                        <div class="min-w-0 flex-1">
+                            <p
+                                class="text-sm font-medium leading-snug group-hover:text-primary"
+                                :class="{ 'line-through text-muted-foreground': task.completed_at }"
+                            >
+                                {{ task.title }}
+                            </p>
+                            <p v-if="task.project" class="mt-0.5 text-[11px] text-muted-foreground">
+                                {{ task.project.title }}
+                            </p>
+                        </div>
+                        <span
                             v-if="task.priority"
-                            class="h-3.5 w-3.5 shrink-0"
-                            :class="priorityClass(task.priority.color)"
-                        />
+                            class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                            :class="priorityPill(task.priority.color)"
+                        >
+                            <Flag class="-mt-0.5 mr-0.5 inline h-3 w-3" />{{ task.priority.name }}
+                        </span>
                     </div>
+
+                    <div
+                        v-if="task.description"
+                        class="prose prose-sm mt-2 line-clamp-2 max-w-none text-xs text-muted-foreground dark:prose-invert"
+                        v-html="task.description"
+                    ></div>
 
                     <div class="mt-3 flex items-center justify-between gap-2 text-xs">
                         <div class="flex flex-wrap items-center gap-1.5 text-muted-foreground">
@@ -304,8 +348,13 @@ function submit() {
                         </div>
                     </div>
 
-                    <div v-if="task.due_date" class="mt-2 text-xs text-muted-foreground">
-                        Due {{ new Date(task.due_date).toLocaleDateString() }}
+                    <div
+                        v-if="task.due_date"
+                        class="mt-2 text-xs"
+                        :class="isOverdue(task) ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'"
+                    >
+                        {{ isOverdue(task) ? 'Overdue · ' : 'Due ' }}
+                        {{ new Date(task.due_date).toLocaleDateString() }}
                     </div>
                 </Link>
             </div>
@@ -340,8 +389,12 @@ function submit() {
                                 {{ task.status?.name ?? '—' }}
                             </td>
                             <td class="px-4 py-2 text-xs">
-                                <span v-if="task.priority" class="inline-flex items-center gap-1">
-                                    <Flag class="h-3 w-3" :class="priorityClass(task.priority.color)" />
+                                <span
+                                    v-if="task.priority"
+                                    class="inline-flex items-center gap-1 rounded-full px-2 py-0.5"
+                                    :class="priorityPill(task.priority.color)"
+                                >
+                                    <Flag class="h-3 w-3" />
                                     {{ task.priority.name }}
                                 </span>
                                 <span v-else class="text-muted-foreground">—</span>

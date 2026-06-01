@@ -26,7 +26,7 @@ class TaskController extends Controller
 
         $query = Task::query()
             ->forWorkspace($workspace)
-            ->with(['status', 'priority', 'assignees', 'tags']);
+            ->with(['status', 'priority', 'assignees', 'tags', 'project:id,title']);
 
         if ($projectId = $request->integer('project_id')) {
             $project = Project::findOrFail($projectId);
@@ -74,8 +74,8 @@ class TaskController extends Controller
             'task' => $task->load(['status', 'priority', 'creator', 'assignees', 'tags', 'subtasks', 'milestone']),
             'comments' => $task->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
             'milestones_for_select' => $task->project
-                ->milestones()
-                ->get(['id', 'title']),
+                ? $task->project->milestones()->get(['id', 'title'])
+                : [],
             'categories' => \App\Enums\Category::options(),
         ]);
     }
