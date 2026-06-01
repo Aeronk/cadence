@@ -30,6 +30,10 @@ const sidebarNavItems: NavItem[] = [
         href: integrations.index(),
     },
     {
+        title: 'Notifications',
+        href: '/settings/notifications',
+    },
+    {
         title: 'Appearance',
         href: editAppearance(),
     },

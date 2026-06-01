@@ -20,6 +20,7 @@ type AvailableProvider = {
     value: string;
     label: string;
     channel: string;
+    coming_soon: boolean;
 };
 
 defineProps<{
@@ -89,14 +90,22 @@ function disconnect(account: Account) {
                         v-for="provider in available_providers"
                         :key="provider.value"
                         type="button"
-                        @click="connect(provider.value)"
-                        class="flex items-center justify-between rounded-lg border p-4 text-left hover:border-primary"
+                        :disabled="provider.coming_soon"
+                        class="flex items-center justify-between rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60"
+                        :class="!provider.coming_soon && 'hover:border-primary'"
+                        @click="!provider.coming_soon && connect(provider.value)"
                     >
                         <div>
                             <p class="font-medium">{{ provider.label }}</p>
                             <p class="text-xs text-muted-foreground capitalize">{{ provider.channel }}</p>
                         </div>
-                        <Link2 class="h-4 w-4 text-muted-foreground" />
+                        <span
+                            v-if="provider.coming_soon"
+                            class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                        >
+                            Coming soon
+                        </span>
+                        <Link2 v-else class="h-4 w-4 text-muted-foreground" />
                     </button>
                 </div>
             </section>

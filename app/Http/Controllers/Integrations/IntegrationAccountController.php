@@ -36,6 +36,7 @@ class IntegrationAccountController extends Controller
                 'value' => $p->value,
                 'label' => $p->label(),
                 'channel' => $p->channel()->value,
+                'coming_soon' => in_array($p, [IntegrationProvider::Zoom, IntegrationProvider::GoogleMeet], true),
             ]),
         ]);
     }

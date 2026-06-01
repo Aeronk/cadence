@@ -14,7 +14,18 @@ class TestNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database', 'broadcast'];
+        return array_values(array_filter(['database', 'broadcast', 'mail'], fn ($channel) =>
+            method_exists($notifiable, 'wantsNotification')
+                ? $notifiable->wantsNotification('test', $channel)
+                : in_array($channel, ['database', 'broadcast'], true)
+        ));
+    }
+
+    public function toMail(object $notifiable): \Illuminate\Notifications\Messages\MailMessage
+    {
+        return (new \Illuminate\Notifications\Messages\MailMessage)
+            ->subject('Cadence — test notification')
+            ->line($this->message);
     }
 
     public function toBroadcast(object $notifiable): BroadcastMessage

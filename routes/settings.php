@@ -30,6 +30,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/integrations', [IntegrationAccountController::class, 'index'])->name('integrations.index');
     Route::delete('settings/integrations/{account}', [IntegrationAccountController::class, 'destroy'])->name('integrations.destroy');
 
+    Route::get('settings/notifications', [\App\Http\Controllers\Settings\NotificationPreferencesController::class, 'edit'])->name('notifications.edit');
+    Route::patch('settings/notifications', [\App\Http\Controllers\Settings\NotificationPreferencesController::class, 'update'])->name('notifications.update');
+
     Route::get('settings/workspace', [WorkspaceController::class, 'edit'])->name('workspace.edit');
     Route::patch('settings/workspace/{workspace}', [WorkspaceController::class, 'update'])->name('workspace.update');
     Route::delete('settings/workspace/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');

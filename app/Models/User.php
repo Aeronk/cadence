@@ -34,7 +34,31 @@ class User extends Authenticatable implements PasskeyUser
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
             'onboarded_at' => 'datetime',
+            'notification_preferences' => 'array',
         ];
+    }
+
+    public const NOTIFICATION_KINDS = [
+        'meeting_invited' => 'Meeting invitations',
+        'meeting_reminder' => 'Meeting reminders',
+        'task_assigned' => 'Task assignments',
+        'reminder' => 'Scheduled reminders',
+        'test' => 'Test notifications',
+    ];
+
+    public const NOTIFICATION_CHANNELS = ['database', 'mail', 'broadcast'];
+
+    /**
+     * Returns true if the user wants this notification kind on this channel.
+     * Defaults to ON when the user has not changed their preferences.
+     */
+    public function wantsNotification(string $kind, string $channel): bool
+    {
+        $prefs = $this->notification_preferences ?? [];
+        if (! isset($prefs[$kind][$channel])) {
+            return true;
+        }
+        return (bool) $prefs[$kind][$channel];
     }
 
     protected static function booted(): void

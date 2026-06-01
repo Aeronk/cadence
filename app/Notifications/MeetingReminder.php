@@ -16,7 +16,11 @@ class MeetingReminder extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database', 'broadcast', 'mail'];
+        return array_values(array_filter(['database', 'broadcast', 'mail'], fn ($c) =>
+            method_exists($notifiable, 'wantsNotification')
+                ? $notifiable->wantsNotification('meeting_reminder', $c)
+                : true,
+        ));
     }
 
     public function toBroadcast(object $notifiable): BroadcastMessage
