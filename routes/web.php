@@ -83,6 +83,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
     Route::get('analytics', AnalyticsController::class)->name('analytics.index');
 
+    Route::post('onboarding/complete', [\App\Http\Controllers\OnboardingController::class, 'complete'])->name('onboarding.complete');
+    Route::post('onboarding/reset', [\App\Http\Controllers\OnboardingController::class, 'reset'])->name('onboarding.reset');
+
     Route::get('briefing', [BriefingController::class, 'index'])->name('briefing.index');
     Route::post('briefing/regenerate', [BriefingController::class, 'regenerate'])->name('briefing.regenerate');
     Route::post('meetings/{meeting}/extract-action-items', ExtractActionItemsController::class)

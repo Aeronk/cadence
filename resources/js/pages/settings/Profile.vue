@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { Form, Head, usePage } from '@inertiajs/vue3';
-import { Link } from '@inertiajs/vue3';
+import { Form, Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
@@ -99,6 +98,22 @@ const user = computed(() => page.props.auth.user);
                 >
             </div>
         </Form>
+    </div>
+
+    <div class="mt-8 rounded-lg border p-4">
+        <h3 class="text-sm font-semibold">Product tour</h3>
+        <p class="mt-1 text-xs text-muted-foreground">
+            Replay the welcome walkthrough showing Projects, Tasks, Calendar, and Analytics.
+        </p>
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            class="mt-3"
+            @click="router.post('/onboarding/reset', {}, { preserveScroll: true, onSuccess: () => router.visit('/dashboard') })"
+        >
+            Replay tour
+        </Button>
     </div>
 
     <DeleteUser />

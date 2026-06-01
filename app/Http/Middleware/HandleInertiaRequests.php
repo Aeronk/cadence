@@ -41,6 +41,7 @@ class HandleInertiaRequests extends Middleware
                 'unreadNotificationsCount' => fn () => $user
                     ? $user->unreadNotifications()->count()
                     : 0,
+                'needsOnboarding' => $user !== null && $user->onboarded_at === null,
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('flash.success'),
