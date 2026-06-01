@@ -285,10 +285,10 @@ function deleteMilestone(m: Milestone) {
                         ></div>
                     </div>
 
-                    <div class="flex shrink-0 items-center gap-2">
+                    <div class="-mx-2 flex shrink-0 items-center gap-2 overflow-x-auto px-2 md:overflow-visible">
                         <Link
                             :href="tasksRoutes.index({ query: { project_id: project.id } }).url"
-                            class="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            class="shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                         >
                             All tasks
                         </Link>

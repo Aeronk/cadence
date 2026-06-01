@@ -94,6 +94,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('notifications/test', [NotificationController::class, 'test'])->name('notifications.test');
 
     // OAuth connect flows for email / calendar providers
     Route::get('integrations/{provider}/connect', [OAuthController::class, 'redirect'])
