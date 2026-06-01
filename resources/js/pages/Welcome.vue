@@ -38,20 +38,31 @@ const features = [
 
 const plans = [
     {
-        name: 'Free',
-        price: '$0',
-        period: 'forever',
-        cta: 'Start free',
-        highlighted: false,
-        features: ['1 workspace', 'Up to 3 members', 'Unlimited tasks & projects', 'Email + calendar integrations'],
+        name: 'Starter (monthly)',
+        price: '$55',
+        period: 'per month',
+        cta: 'Start subscription',
+        highlighted: true,
+        features: [
+            'Unlimited workspaces',
+            'Unlimited members',
+            'All productivity modules',
+            'SMS + WhatsApp + email',
+            'Cancel anytime',
+        ],
     },
     {
-        name: 'Team',
-        price: '$12',
-        period: 'per user / month',
-        cta: 'Start free trial',
-        highlighted: true,
-        features: ['Unlimited workspaces', 'Unlimited members', 'SMS + WhatsApp', 'Activity log + audit', 'Priority support'],
+        name: 'Lifetime',
+        price: '$800',
+        period: 'one-time payment',
+        cta: 'Buy lifetime',
+        highlighted: false,
+        features: [
+            'Everything in Starter',
+            'No recurring fees, ever',
+            'Lifetime feature updates',
+            'Priority email support',
+        ],
     },
     {
         name: 'Business',
@@ -131,7 +142,7 @@ const plans = [
             <div class="mx-auto max-w-7xl px-6">
                 <div class="mx-auto mb-16 max-w-2xl text-center">
                     <h2 class="text-3xl font-bold tracking-tight">Simple pricing</h2>
-                    <p class="mt-3 text-muted-foreground">Start free. Upgrade when your team grows.</p>
+                    <p class="mt-3 text-muted-foreground">Pay monthly, or own it for life with a single payment.</p>
                 </div>
                 <div class="grid gap-6 md:grid-cols-3">
                     <div
