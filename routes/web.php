@@ -38,6 +38,12 @@ Route::get('invitations/{token}', [WorkspaceInvitationController::class, 'show']
     ->name('workspace.invitations.accept');
 Route::view('offline', 'offline')->name('offline');
 
+// Public legal pages. These URLs are submitted to Google and Microsoft for
+// OAuth app verification, so they must stay reachable without authentication
+// and must render server-side — a reviewer cannot be shown a blank page.
+Route::view('privacy', 'legal.privacy')->name('legal.privacy');
+Route::view('terms', 'legal.terms')->name('legal.terms');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 

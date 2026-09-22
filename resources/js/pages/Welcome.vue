@@ -190,9 +190,17 @@ const plans = [
             </div>
         </section>
 
+        <!-- Google requires the privacy policy and terms to be linked from the
+             homepage before it will verify the OAuth consent screen. These are
+             plain <a> tags, not Inertia <Link>s, because the targets are
+             server-rendered Blade pages outside the SPA. -->
         <footer class="border-t border-border/40 py-8">
-            <div class="mx-auto max-w-7xl px-6 text-center text-sm text-muted-foreground">
-                &copy; {{ new Date().getFullYear() }} Cadence. All rights reserved.
+            <div class="mx-auto flex max-w-7xl flex-col items-center gap-3 px-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
+                <p>&copy; {{ new Date().getFullYear() }} Cadence. All rights reserved.</p>
+                <nav class="flex items-center gap-5">
+                    <a href="/privacy" class="hover:text-foreground">Privacy Policy</a>
+                    <a href="/terms" class="hover:text-foreground">Terms of Service</a>
+                </nav>
             </div>
         </footer>
     </div>
