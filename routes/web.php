@@ -126,10 +126,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // OAuth connect flows for email / calendar providers
     Route::get('integrations/{provider}/connect', [OAuthController::class, 'redirect'])
         ->name('integrations.connect')
-        ->whereIn('provider', ['gmail', 'microsoft']);
+        ->whereIn('provider', ['gmail', 'microsoft', 'google_calendar', 'google_meet']);
     Route::get('integrations/{provider}/callback', [OAuthController::class, 'callback'])
         ->name('integrations.callback')
-        ->whereIn('provider', ['gmail', 'microsoft']);
+        ->whereIn('provider', ['gmail', 'microsoft', 'google_calendar', 'google_meet']);
 });
 
 // Inbound webhooks — public, signature-verified inside the controller.

@@ -55,7 +55,11 @@ class IntegrationAccountController extends Controller
                 'value' => $p->value,
                 'label' => $p->label(),
                 'channel' => $p->channel()->value,
-                'coming_soon' => in_array($p, [IntegrationProvider::Zoom, IntegrationProvider::GoogleMeet], true),
+                // Only a provider with its own OAuth flow can be clicked. The
+                // rest are either covered by another connection or configured
+                // in the environment, and used to render as links that 404'd.
+                'connectable' => $p->isConnectable(),
+                'unavailable_reason' => $p->unavailableReason(),
             ]),
         ]);
     }

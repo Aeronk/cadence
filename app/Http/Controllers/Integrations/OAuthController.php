@@ -90,12 +90,18 @@ class OAuthController extends Controller
             ->with('flash.success', $providerEnum->label().' connected.');
     }
 
+    /**
+     * Resolve a URL segment to the provider whose OAuth flow it belongs to.
+     *
+     * `google_calendar` and `google_meet` are capabilities of the Google
+     * connection rather than connections of their own, so they map onto Gmail
+     * instead of 404ing — a link to either is a reasonable thing for someone to
+     * follow, and one Google authorisation is what actually grants them.
+     */
     protected function resolveProvider(string $key): IntegrationProvider
     {
-        return match ($key) {
-            'gmail' => IntegrationProvider::Gmail,
-            'microsoft' => IntegrationProvider::Microsoft,
-            default => abort(404),
-        };
+        $provider = IntegrationProvider::tryFrom($key);
+
+        return $provider?->connectsVia() ?? abort(404);
     }
 }

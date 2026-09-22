@@ -45,7 +45,9 @@ type AvailableProvider = {
     value: string;
     label: string;
     channel: string;
-    coming_soon: boolean;
+    /** Only a provider with its own OAuth flow can be clicked. */
+    connectable: boolean;
+    unavailable_reason: string | null;
 };
 
 defineProps<{
@@ -224,22 +226,24 @@ const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString()
                         v-for="provider in available_providers"
                         :key="provider.value"
                         type="button"
-                        :disabled="provider.coming_soon"
-                        class="flex items-center justify-between rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60"
-                        :class="!provider.coming_soon && 'hover:border-primary'"
-                        @click="!provider.coming_soon && connect(provider.value)"
+                        :disabled="!provider.connectable"
+                        class="flex items-center justify-between gap-3 rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60"
+                        :class="provider.connectable && 'hover:border-primary'"
+                        @click="provider.connectable && connect(provider.value)"
                     >
-                        <div>
+                        <div class="min-w-0">
                             <p class="font-medium">{{ provider.label }}</p>
                             <p class="text-xs capitalize text-muted-foreground">{{ provider.channel }}</p>
                         </div>
+                        <!-- Says why, rather than looking clickable and then
+                             leading to a route that cannot serve it. -->
                         <span
-                            v-if="provider.coming_soon"
-                            class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                            v-if="provider.unavailable_reason"
+                            class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
                         >
-                            Coming soon
+                            {{ provider.unavailable_reason }}
                         </span>
-                        <Link2 v-else class="h-4 w-4 text-muted-foreground" />
+                        <Link2 v-else class="h-4 w-4 shrink-0 text-muted-foreground" />
                     </button>
                 </div>
             </section>
