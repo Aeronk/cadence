@@ -43,7 +43,10 @@ class WebhookController extends Controller
             true,
         );
 
-        if ($email = $data['emailAddress'] ?? null) {
+        // A subscription registered before mail sync was switched off can still
+        // deliver; honouring it would sync mail this deployment no longer has
+        // permission for.
+        if (($email = $data['emailAddress'] ?? null) && IntegrationProvider::Gmail->syncsInbox()) {
             IntegrationAccount::query()
                 ->where('provider', IntegrationProvider::Gmail->value)
                 ->where('display_name', $email)
@@ -85,7 +88,9 @@ class WebhookController extends Controller
             // subscriptions refreshed the wrong thing.
             match ($kind) {
                 'calendar' => SyncIntegrationAccountCalendar::dispatch($accountId),
-                default => SyncIntegrationAccountInbox::dispatch($accountId),
+                default => IntegrationProvider::Microsoft->syncsInbox()
+                    ? SyncIntegrationAccountInbox::dispatch($accountId)
+                    : null,
             };
         }
 

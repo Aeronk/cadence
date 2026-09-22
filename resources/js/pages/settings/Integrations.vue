@@ -64,7 +64,10 @@ function disconnect(account: Account) {
     router.delete(integrations.destroy(account.id).url, { preserveScroll: true });
 }
 
-/** Re-read the provider's list of calendars, picking up any newly shared ones. */
+/**
+ * Re-read the calendars and pull their events immediately. Runs server-side
+ * rather than being queued, so it works even where no queue worker is running.
+ */
 function refreshCalendars(account: Account) {
     router.post(
         `/settings/integrations/${account.id}/calendars/refresh`,
@@ -147,7 +150,7 @@ const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString()
                                     <CalendarDays class="h-3.5 w-3.5" /> Calendars
                                 </h4>
                                 <Button variant="ghost" size="sm" @click="refreshCalendars(account)">
-                                    <RefreshCw class="mr-1.5 h-3.5 w-3.5" /> Refresh list
+                                    <RefreshCw class="mr-1.5 h-3.5 w-3.5" /> Sync now
                                 </Button>
                             </div>
 

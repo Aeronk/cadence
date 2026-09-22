@@ -3,8 +3,12 @@
 namespace Tests\Feature\Integrations;
 
 use App\Enums\IntegrationProvider;
+use App\Jobs\SyncIntegrationAccountCalendar;
+use App\Jobs\SyncIntegrationAccountInbox;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -143,6 +147,67 @@ class ConnectProviderTest extends TestCase
                 $this->assertFalse($gmail['connectable']);
                 $this->assertSame('Not configured on this server', $gmail['unavailable_reason']);
             });
+    }
+
+    public function test_calendar_only_mode_never_asks_for_the_gmail_scopes(): void
+    {
+        // The Gmail scopes are Google's "restricted" tier and pull an annual
+        // third-party security assessment into verification. Calendar does not.
+        $location = $this->actingAs($this->user)
+            ->get('/integrations/gmail/connect')
+            ->assertRedirect()
+            ->headers->get('Location');
+
+        $this->assertStringContainsString(urlencode('auth/calendar'), $location);
+        $this->assertStringNotContainsString('gmail.readonly', $location);
+        $this->assertStringNotContainsString('gmail.send', $location);
+    }
+
+    public function test_connecting_does_not_start_a_mail_sync_while_it_is_switched_off(): void
+    {
+        Bus::fake();
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response([
+                'access_token' => 'at', 'refresh_token' => 'rt', 'expires_in' => 3600,
+            ]),
+            'openidconnect.googleapis.com/*' => Http::response([
+                'sub' => 'google-user-1', 'email' => 'someone@example.com',
+            ]),
+        ]);
+
+        $this->actingAs($this->user)
+            ->withSession(['integration_oauth_state' => [
+                'state' => 'abc',
+                'provider' => IntegrationProvider::Gmail->value,
+            ]])
+            ->get('/integrations/gmail/callback?code=xyz&state=abc')
+            ->assertRedirect(route('integrations.index'));
+
+        // We never requested the mail scopes, so syncing mail could only fail.
+        Bus::assertNotDispatched(SyncIntegrationAccountInbox::class);
+        Bus::assertDispatched(SyncIntegrationAccountCalendar::class);
+    }
+
+    public function test_turning_mail_sync_back_on_restores_the_gmail_scopes(): void
+    {
+        config([
+            'integrations.google.sync_inbox' => true,
+            'integrations.google.scopes' => [
+                'openid', 'email', 'profile',
+                'https://www.googleapis.com/auth/calendar',
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.send',
+            ],
+        ]);
+
+        $location = $this->actingAs($this->user)
+            ->get('/integrations/gmail/connect')
+            ->assertRedirect()
+            ->headers->get('Location');
+
+        $this->assertStringContainsString('gmail.readonly', $location);
+        $this->assertTrue(IntegrationProvider::Gmail->syncsInbox());
     }
 
     public function test_calendar_is_advertised_as_part_of_the_google_connection(): void

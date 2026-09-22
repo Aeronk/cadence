@@ -88,7 +88,11 @@ class OAuthController extends Controller
             ]
         );
 
-        SyncIntegrationAccountInbox::dispatch($account->id)->afterResponse();
+        // Only when mail sync is switched on. With it off we never requested the
+        // mail scopes, so the call would fail on permissions anyway.
+        if ($providerEnum->syncsInbox()) {
+            SyncIntegrationAccountInbox::dispatch($account->id)->afterResponse();
+        }
         // Both providers carry a calendar scope, so a fresh connection should
         // populate the calendar too rather than waiting for the next poll. The
         // list of calendars is read first: without it there is nothing to pull

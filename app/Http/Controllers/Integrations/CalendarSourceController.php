@@ -19,20 +19,34 @@ class CalendarSourceController extends Controller
 {
     public function __construct(protected IntegrationManager $manager) {}
 
-    /** Re-read the account's calendars from the provider. */
+    /**
+     * Re-read the account's calendars and pull their events, right now.
+     *
+     * Deliberately synchronous. The sync that runs on connect is queued, so on a
+     * deployment without a running queue worker nothing ever happens and the
+     * calendar stays stubbornly empty with no error to explain it. This path
+     * always does the work and reports what it found.
+     */
     public function refresh(Request $request, IntegrationAccount $account): RedirectResponse
     {
         $this->authorizeAccount($request, $account);
 
         try {
-            $count = $this->manager->calendar($account)->syncCalendarList($account);
+            $provider = $this->manager->calendar($account);
+            $calendars = $provider->syncCalendarList($account);
+            $events = $provider->syncEvents($account);
         } catch (Throwable $e) {
             $account->forceFill(['last_error' => $e->getMessage()])->save();
 
-            return back()->with('flash.error', 'Could not read your calendars: '.$e->getMessage());
+            return back()->with('flash.error', 'Could not sync your calendars: '.$e->getMessage());
         }
 
-        return back()->with('flash.success', "Found {$count} calendar(s).");
+        $account->forceFill(['last_error' => null])->save();
+
+        return back()->with(
+            'flash.success',
+            "Synced {$events} event(s) across {$calendars} calendar(s).",
+        );
     }
 
     public function update(Request $request, CalendarSource $source): RedirectResponse

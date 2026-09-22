@@ -49,6 +49,22 @@ enum IntegrationProvider: string
     }
 
     /**
+     * Whether this deployment syncs mail for the provider.
+     *
+     * Off by default: the mail scopes are the restricted ones, and not asking
+     * for them keeps app verification to ordinary review. Calendar sync is
+     * unaffected either way.
+     */
+    public function syncsInbox(): bool
+    {
+        return match ($this->connectsVia()) {
+            self::Gmail => (bool) config('integrations.google.sync_inbox'),
+            self::Microsoft => (bool) config('integrations.microsoft.sync_inbox'),
+            default => false,
+        };
+    }
+
+    /**
      * Whether this deployment actually holds OAuth credentials for the provider.
      *
      * Without them the authorisation URL is built with a null client_id, which

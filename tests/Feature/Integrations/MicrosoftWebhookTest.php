@@ -49,6 +49,10 @@ class MicrosoftWebhookTest extends TestCase
     {
         Bus::fake();
 
+        // Mail sync is opt-in; this test is about routing a verified mail
+        // notification to the right job, so it switches mail on.
+        config(['integrations.microsoft.sync_inbox' => true]);
+
         $account = IntegrationAccount::factory()->provider(IntegrationProvider::Microsoft)->create();
         $clientState = $this->registerSecret($account, 'graph_inbox_token_hash', 'inbox-secret');
 

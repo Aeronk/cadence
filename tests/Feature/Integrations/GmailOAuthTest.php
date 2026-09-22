@@ -52,6 +52,10 @@ class GmailOAuthTest extends TestCase
             ]),
         ]);
 
+        // Mail sync is off by default now, so this test turns it on: the point
+        // here is that a successful callback kicks off the syncs it should.
+        config(['integrations.google.sync_inbox' => true]);
+
         $user = User::factory()->create();
         $this->actingAs($user)->withSession([
             'integration_oauth_state' => ['state' => 'abc', 'provider' => 'gmail'],

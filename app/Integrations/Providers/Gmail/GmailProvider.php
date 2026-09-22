@@ -12,11 +12,13 @@ use App\Models\IntegrationAccount;
 use App\Models\Meeting;
 use App\Models\Message;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 {
@@ -27,6 +29,14 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
     private const API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
     private const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
+
+    /** Messages fetched per run. A first sync resumes rather than pulling all. */
+    private const MAX_MESSAGES_PER_RUN = 200;
+
+    private const INBOX_PAGE_SIZE = 50;
+
+    /** ~40 calls a second, against a per-user budget of about 50. */
+    private const INBOX_REQUEST_PAUSE_MICROSECONDS = 25000;
 
     public function authorizationUrl(string $state, ?string $redirectUri = null): string
     {
@@ -93,35 +103,63 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
         ];
     }
 
+    /**
+     * Pull recent mail headers.
+     *
+     * Gmail charges quota per call — 5 units for a list, 5 for each message —
+     * against a budget of roughly 250 units per user per second. The first sync
+     * of a busy mailbox is the dangerous one: thirty days of mail is thousands
+     * of messages, and fetching them in a tight loop exhausts the budget within
+     * the first second and fails the whole run with a 403.
+     *
+     * So the run is bounded, paced, and resumable.
+     */
     public function syncInbox(IntegrationAccount $account): int
     {
         $this->ensureValidToken($account);
 
         $persisted = 0;
+        $fetched = 0;
         $pageToken = null;
         $cursor = $account->sync_cursor;
         $query = $cursor ? "after:{$cursor}" : 'newer_than:30d';
+        $exhausted = false;
 
         do {
-            $list = Http::withToken($account->access_token)
-                ->get(self::API_BASE.'/messages', array_filter([
-                    'q' => $query,
-                    'maxResults' => 50,
-                    'pageToken' => $pageToken,
-                ]))
-                ->throw()->json();
+            $list = $this->gmailGet($account, self::API_BASE.'/messages', array_filter([
+                'q' => $query,
+                'maxResults' => self::INBOX_PAGE_SIZE,
+                'pageToken' => $pageToken,
+            ]));
 
-            foreach (($list['messages'] ?? []) as $stub) {
-                if (Message::query()
-                    ->where('channel', MessageChannel::Email->value)
-                    ->where('external_id', $stub['id'])
-                    ->exists()) {
+            $stubs = collect($list['messages'] ?? [])->pluck('id')->filter();
+
+            // One query for the whole page instead of one per message. The old
+            // loop asked the database whether it had each message individually.
+            $known = Message::query()
+                ->where('channel', MessageChannel::Email->value)
+                ->whereIn('external_id', $stubs)
+                ->pluck('external_id')
+                ->flip();
+
+            foreach ($stubs as $id) {
+                if ($known->has($id)) {
                     continue;
                 }
 
-                $detail = Http::withToken($account->access_token)
-                    ->get(self::API_BASE."/messages/{$stub['id']}", ['format' => 'metadata', 'metadataHeaders' => ['From', 'To', 'Subject', 'Date']])
-                    ->throw()->json();
+                if ($fetched >= self::MAX_MESSAGES_PER_RUN) {
+                    // Stop cleanly rather than burning through the quota. The
+                    // cursor is deliberately left alone below so the next run
+                    // asks the same question and carries on where this stopped.
+                    $exhausted = true;
+                    break 2;
+                }
+
+                $detail = $this->gmailGet($account, self::API_BASE."/messages/{$id}", [
+                    'format' => 'metadata',
+                    'metadataHeaders' => ['From', 'To', 'Subject', 'Date'],
+                ]);
+                $fetched++;
 
                 Message::create([
                     'workspace_id' => $account->workspace_id,
@@ -134,7 +172,9 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
                     'subject' => $this->headerValue($detail, 'Subject'),
                     'body_text' => $detail['snippet'] ?? null,
                     'status' => 'received',
-                    'sent_at' => now(),
+                    // The message's own Date header, not the moment we happened
+                    // to read it, which put every synced mail at "just now".
+                    'sent_at' => $this->parseHeaderDate($detail) ?? now(),
                 ]);
 
                 $persisted++;
@@ -145,11 +185,92 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 
         $account->forceFill([
             'last_synced_at' => now(),
-            'sync_cursor' => now()->format('Y/m/d'),
+            // Only move the cursor once the window is genuinely drained.
+            // Advancing it after a capped run would skip everything this run did
+            // not reach, and that mail would never be fetched.
+            'sync_cursor' => $exhausted ? $account->sync_cursor : now()->format('Y/m/d'),
             'last_error' => null,
         ])->save();
 
         return $persisted;
+    }
+
+    /**
+     * A Gmail GET that respects the quota.
+     *
+     * Paced to stay inside the per-user budget, and retried with backoff when
+     * Google says we are going too fast — a rate limit is a "wait" answer, not
+     * a failure, and treating it as fatal loses the whole sync.
+     *
+     * @param  array<string, mixed>  $query
+     * @return array<string, mixed>
+     */
+    protected function gmailGet(IntegrationAccount $account, string $url, array $query = []): array
+    {
+        // ~5 quota units a call against ~250 per user per second. This keeps a
+        // single account well under its own share without needing a shared
+        // token bucket across workers.
+        usleep(self::INBOX_REQUEST_PAUSE_MICROSECONDS);
+
+        return Http::withToken($account->access_token)
+            ->retry(
+                times: 4,
+                sleepMilliseconds: fn (int $attempt) => min(1000 * (2 ** ($attempt - 1)), 8000),
+                when: fn (Throwable $e) => $e instanceof ConnectionException
+                    || ($e instanceof RequestException && $this->isRateLimited($e)),
+                throw: true,
+            )
+            ->get($url, $query)
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Whether Google is asking us to slow down rather than refusing outright.
+     *
+     * Gmail reports throttling as 429, and confusingly also as 403 with a
+     * rate-limit reason — a plain 403 means no permission and must not be
+     * retried, so the reason has to be read rather than the status alone.
+     */
+    protected function isRateLimited(RequestException $e): bool
+    {
+        if ($e->response->status() === 429) {
+            return true;
+        }
+
+        if ($e->response->status() !== 403) {
+            return false;
+        }
+
+        $reason = $e->response->json('error.errors.0.reason', '');
+        $message = (string) $e->response->json('error.message', '');
+
+        return in_array($reason, ['rateLimitExceeded', 'userRateLimitExceeded'], true)
+            || str_contains($message, 'Quota exceeded');
+    }
+
+    /**
+     * The Date header as a timestamp, or null if it is missing or unparseable —
+     * senders do put nonsense in there.
+     *
+     * @param  array<string, mixed>  $detail
+     */
+    protected function parseHeaderDate(array $detail): ?CarbonImmutable
+    {
+        $raw = $this->headerValue($detail, 'Date');
+
+        if (! $raw) {
+            return null;
+        }
+
+        try {
+            // Normalised to UTC: the column carries no offset, so storing the
+            // sender's wall clock would place a 09:30+0200 mail at 09:30 UTC
+            // and shift it two hours everywhere it is read back.
+            return CarbonImmutable::parse($raw)->utc();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     public function send(IntegrationAccount $account, array $payload): Message

@@ -5,14 +5,25 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect_uri' => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/integrations/gmail/callback'),
-        'scopes' => [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.send',
-            'https://www.googleapis.com/auth/calendar',
-        ],
+        // Mail sync is off by default, which means the Gmail scopes are never
+        // requested. They are "restricted" under Google's tiering and drag an
+        // annual third-party security assessment into app verification, where
+        // calendar alone needs only ordinary review. Turning this on also means
+        // reconnecting, since scopes are granted at authorisation time.
+        'sync_inbox' => (bool) env('GOOGLE_SYNC_INBOX', false),
+
+        'scopes' => array_merge(
+            [
+                'openid',
+                'email',
+                'profile',
+                'https://www.googleapis.com/auth/calendar',
+            ],
+            env('GOOGLE_SYNC_INBOX', false) ? [
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.send',
+            ] : [],
+        ),
         'pubsub_topic' => env('GOOGLE_PUBSUB_TOPIC'),
 
         // Calendar push notifications require an HTTPS callback on a domain
@@ -27,15 +38,21 @@ return [
         'client_secret' => env('MS_CLIENT_SECRET'),
         'tenant_id' => env('MS_TENANT_ID', 'common'),
         'redirect_uri' => env('MS_REDIRECT_URI', env('APP_URL').'/integrations/microsoft/callback'),
-        'scopes' => [
-            'openid',
-            'email',
-            'profile',
-            'offline_access',
-            'https://graph.microsoft.com/Mail.Read',
-            'https://graph.microsoft.com/Mail.Send',
-            'https://graph.microsoft.com/Calendars.ReadWrite',
-        ],
+        'sync_inbox' => (bool) env('MS_SYNC_INBOX', false),
+
+        'scopes' => array_merge(
+            [
+                'openid',
+                'email',
+                'profile',
+                'offline_access',
+                'https://graph.microsoft.com/Calendars.ReadWrite',
+            ],
+            env('MS_SYNC_INBOX', false) ? [
+                'https://graph.microsoft.com/Mail.Read',
+                'https://graph.microsoft.com/Mail.Send',
+            ] : [],
+        ),
         'webhook_url' => env('MS_WEBHOOK_URL', env('APP_URL').'/integrations/microsoft/webhook'),
     ],
 
