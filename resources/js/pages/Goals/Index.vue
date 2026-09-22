@@ -16,7 +16,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { buildTree, type Goal, type GoalMilestone } from '@/lib/goals';
+import { buildTree, type Goal, type GoalMilestone, type GoalProject } from '@/lib/goals';
 
 type LinkableMilestone = {
     id: number;
@@ -136,6 +136,45 @@ function removeMilestone(m: GoalMilestone) {
     router.delete(`/milestones/${m.id}`, { preserveScroll: true });
 }
 
+/* Projects behind a goal. A linked project contributes its own progress as one
+   item, and its milestones stop being counted separately so the same work
+   cannot vote twice. */
+const projectOpen = ref(false);
+const projectGoal = ref<Goal | null>(null);
+const projectToLink = ref<number | null>(null);
+
+function openLinkProject(goal: Goal) {
+    projectGoal.value = goal;
+    projectToLink.value = null;
+    projectOpen.value = true;
+}
+
+/** Projects not already under this goal. */
+const availableProjects = computed(() => {
+    const taken = new Set((projectGoal.value?.projects ?? []).map((p) => p.id));
+    return props.projects.filter((p) => !taken.has(p.id));
+});
+
+function linkProject() {
+    if (!projectGoal.value || !projectToLink.value) return;
+    router.post(
+        `/goals/${projectGoal.value.id}/projects`,
+        { project_id: projectToLink.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                projectOpen.value = false;
+                projectToLink.value = null;
+            },
+        },
+    );
+}
+
+function unlinkProject(goal: Goal, project: GoalProject) {
+    if (!confirm(`Unlink "${project.title}" from this goal? The project is not deleted.`)) return;
+    router.delete(`/goals/${goal.id}/projects/${project.id}`, { preserveScroll: true });
+}
+
 /* Linking an existing project milestone is the other way progress rolls up. */
 const linkOpen = ref(false);
 const linkGoalId = ref<number | null>(null);
@@ -203,6 +242,8 @@ function linkMilestone() {
                         @remove="remove"
                         @toggle-complete="toggleComplete"
                         @add-milestone="openAddMilestone"
+                        @link-project="openLinkProject"
+                        @unlink-project="unlinkProject"
                         @toggle-milestone="toggleMilestone"
                         @unlink-milestone="unlinkMilestone"
                         @remove-milestone="removeMilestone"
@@ -223,6 +264,41 @@ function linkMilestone() {
             :goal-title="milestoneGoal?.title ?? ''"
             :projects="projects"
         />
+
+        <Dialog v-model:open="projectOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Link a project to this goal</DialogTitle>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="linkProject">
+                    <p class="text-sm text-muted-foreground">
+                        The project's own progress becomes one part of
+                        <strong>{{ projectGoal?.title }}</strong>. Milestones inside it stop
+                        being counted separately, so nothing is double-counted.
+                    </p>
+                    <div>
+                        <Label for="link-project">Project</Label>
+                        <select
+                            id="link-project"
+                            v-model="projectToLink"
+                            required
+                            class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                            <option :value="null" disabled>Choose a project…</option>
+                            <option v-for="p in availableProjects" :key="p.id" :value="p.id">
+                                {{ p.title }}
+                            </option>
+                        </select>
+                        <p v-if="!availableProjects.length" class="mt-1 text-xs text-muted-foreground">
+                            Every project in this workspace is already linked to this goal.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" :disabled="!projectToLink">Link</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <Dialog v-model:open="linkOpen">
             <DialogContent>

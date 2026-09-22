@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Todos;
 
+use App\Enums\Category;
 use App\Http\Controllers\Controller;
 use App\Models\Todo;
 use Illuminate\Http\RedirectResponse;
@@ -29,7 +30,7 @@ class TodoController extends Controller
 
         return Inertia::render('Todos/Index', [
             'todos' => $todos,
-            'categories' => \App\Enums\Category::options(),
+            'categories' => Category::options(),
         ]);
     }
 
@@ -41,10 +42,18 @@ class TodoController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
-            'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
+            'category' => ['nullable', Rule::in(Category::values())],
             'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
             'recurrence_ends_on' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         Todo::create($data + [
@@ -64,12 +73,20 @@ class TodoController extends Controller
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'priority' => ['nullable', Rule::in(['low', 'medium', 'high'])],
-            'category' => ['nullable', Rule::in(\App\Enums\Category::values())],
+            'category' => ['nullable', Rule::in(Category::values())],
             'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
             'recurrence_ends_on' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'completed' => ['nullable', 'boolean'],
             'position' => ['nullable', 'integer', 'min:0'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         if (array_key_exists('completed', $data)) {

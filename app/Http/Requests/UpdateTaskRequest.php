@@ -23,6 +23,15 @@ class UpdateTaskRequest extends FormRequest
             'status_id' => ['nullable', Rule::exists('statuses', 'id')->where('workspace_id', $workspaceId)],
             'priority_id' => ['nullable', Rule::exists('priorities', 'id')->where('workspace_id', $workspaceId)],
             'milestone_id' => ['nullable', Rule::exists('milestones', 'id')->where('workspace_id', $workspaceId)],
+            // Travel is a personal record, so a task may only be pinned to a
+            // trip the person making the change owns.
+            'trip_id' => [
+                'nullable',
+                Rule::exists('trips', 'id')
+                    ->where('workspace_id', $workspaceId)
+                    ->where('user_id', $this->user()->id)
+                    ->whereNull('deleted_at'),
+            ],
             'category' => ['nullable', Rule::in(Category::values())],
             'recurrence_rule' => ['nullable', Rule::in(['daily', 'weekly', 'monthly', 'yearly'])],
             'recurrence_ends_on' => ['nullable', 'date'],
@@ -44,7 +53,7 @@ class UpdateTaskRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $nullable = [
-            'status_id', 'priority_id', 'milestone_id', 'category',
+            'status_id', 'priority_id', 'milestone_id', 'trip_id', 'category',
             'recurrence_rule', 'recurrence_ends_on', 'start_date', 'due_date',
         ];
 

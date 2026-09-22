@@ -17,6 +17,7 @@ class Note extends Model
     protected $fillable = [
         'workspace_id',
         'user_id',
+        'project_id',
         'title',
         'body',
         'color',
@@ -33,5 +34,10 @@ class Note extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 }

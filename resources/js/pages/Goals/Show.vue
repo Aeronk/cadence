@@ -5,6 +5,8 @@ import {
     CheckCircle2,
     Circle,
     Flag,
+    FolderKanban,
+    Link2,
     Link2Off,
     Lock,
     Pencil,
@@ -15,6 +17,14 @@ import {
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import GoalFormDialog from '@/components/GoalFormDialog.vue';
 import MilestoneFormDialog from '@/components/MilestoneFormDialog.vue';
 import {
@@ -26,6 +36,7 @@ import {
     typeBadge,
     type Goal,
     type GoalMilestone,
+    type GoalProject,
 } from '@/lib/goals';
 
 const props = defineProps<{
@@ -76,6 +87,35 @@ function remove() {
     router.delete(`/goals/${props.goal.id}`, {
         onSuccess: () => router.visit('/goals'),
     });
+}
+
+/* Projects serving this goal. */
+const projectOpen = ref(false);
+const projectToLink = ref<number | null>(null);
+
+const availableProjects = computed(() => {
+    const taken = new Set(props.goal.projects.map((p) => p.id));
+    return props.projects.filter((p) => !taken.has(p.id));
+});
+
+function linkProject() {
+    if (!projectToLink.value) return;
+    router.post(
+        `/goals/${props.goal.id}/projects`,
+        { project_id: projectToLink.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                projectOpen.value = false;
+                projectToLink.value = null;
+            },
+        },
+    );
+}
+
+function unlinkProject(p: GoalProject) {
+    if (!confirm(`Unlink "${p.title}" from this goal? The project is not deleted.`)) return;
+    router.delete(`/goals/${props.goal.id}/projects/${p.id}`, { preserveScroll: true });
 }
 
 function toggleMilestone(m: GoalMilestone) {
@@ -199,6 +239,62 @@ function removeMilestone(m: GoalMilestone) {
                 <h2 class="mb-2 text-sm font-semibold">Description</h2>
                 <div class="prose prose-sm max-w-none dark:prose-invert" v-html="goal.description" />
             </div>
+
+            <!-- Projects -->
+            <section>
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="flex items-center gap-2 text-sm font-semibold">
+                        <FolderKanban class="h-4 w-4" /> Projects
+                        <span class="font-normal text-muted-foreground">
+                            the work behind this goal
+                        </span>
+                    </h2>
+                    <Button size="sm" variant="outline" @click="projectOpen = true">
+                        <Link2 class="mr-1.5 h-3.5 w-3.5" /> Link project
+                    </Button>
+                </div>
+
+                <div
+                    v-if="goal.projects.length === 0"
+                    class="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground"
+                >
+                    No projects linked. Link one and its progress counts towards this goal.
+                </div>
+
+                <div v-else class="divide-y rounded-xl border bg-card">
+                    <div
+                        v-for="p in goal.projects"
+                        :key="p.id"
+                        class="group flex items-center gap-3 p-3"
+                    >
+                        <FolderKanban class="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div class="min-w-0 flex-1">
+                            <a :href="p.url" class="truncate text-sm font-medium hover:underline">
+                                {{ p.title }}
+                            </a>
+                            <p class="text-xs capitalize text-muted-foreground">
+                                {{ p.state.replace('_', ' ') }}
+                                <template v-if="p.due_date"> &middot; due {{ formatDate(p.due_date) }}</template>
+                            </p>
+                        </div>
+                        <div class="hidden w-28 sm:block">
+                            <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <div class="h-full bg-primary/70" :style="{ width: `${p.progress}%` }" />
+                            </div>
+                        </div>
+                        <span class="w-10 text-right text-xs tabular-nums text-muted-foreground">
+                            {{ p.progress }}%
+                        </span>
+                        <button
+                            class="opacity-0 transition group-hover:opacity-100"
+                            title="Unlink from this goal"
+                            @click="unlinkProject(p)"
+                        >
+                            <Link2Off class="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        </button>
+                    </div>
+                </div>
+            </section>
 
             <!-- Milestones -->
             <section>
@@ -355,6 +451,40 @@ function removeMilestone(m: GoalMilestone) {
             :parent-options="subGoalParentOptions"
             :default-parent-id="goal.id"
         />
+
+        <Dialog v-model:open="projectOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Link a project to this goal</DialogTitle>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="linkProject">
+                    <p class="text-sm text-muted-foreground">
+                        The project's own progress becomes one part of this goal. Milestones
+                        inside it stop being counted separately, so nothing is double-counted.
+                    </p>
+                    <div>
+                        <Label for="goal-link-project">Project</Label>
+                        <select
+                            id="goal-link-project"
+                            v-model="projectToLink"
+                            required
+                            class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                            <option :value="null" disabled>Choose a project…</option>
+                            <option v-for="p in availableProjects" :key="p.id" :value="p.id">
+                                {{ p.title }}
+                            </option>
+                        </select>
+                        <p v-if="!availableProjects.length" class="mt-1 text-xs text-muted-foreground">
+                            Every project in this workspace is already linked to this goal.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" :disabled="!projectToLink">Link</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <MilestoneFormDialog
             v-model:open="milestoneOpen"

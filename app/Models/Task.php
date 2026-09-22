@@ -25,6 +25,7 @@ class Task extends Model
         'parent_id',
         'milestone_id',
         'meeting_id',
+        'trip_id',
         'status_id',
         'priority_id',
         'category',
@@ -118,6 +119,12 @@ class Task extends Model
     public function isScheduled(): bool
     {
         return $this->meeting_id !== null;
+    }
+
+    /** Travel this task is tied to — work that happens while away. */
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(Trip::class);
     }
 
     public function parent(): BelongsTo

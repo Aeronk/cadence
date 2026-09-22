@@ -27,6 +27,7 @@ class Trip extends Model
     protected $fillable = [
         'workspace_id',
         'user_id',
+        'project_id',
         'name',
         'purpose',
         'destination_country',
@@ -48,6 +49,18 @@ class Trip extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The project this travel is being undertaken for, if any. */
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    /** Work that has to happen on this trip. */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
     }
 
     public function segments(): HasMany

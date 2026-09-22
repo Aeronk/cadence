@@ -7,6 +7,7 @@ use Database\Factories\GoalFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -73,6 +74,15 @@ class Goal extends Model
         return $this->hasMany(Milestone::class);
     }
 
+    /**
+     * Projects being run in service of this goal. Many-to-many: one project
+     * often advances several goals at once.
+     */
+    public function projects(): BelongsToMany
+    {
+        return $this->belongsToMany(Project::class, 'goal_project')->withTimestamps();
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -92,10 +102,21 @@ class Goal extends Model
             return 100;
         }
 
-        $childRows = $this->children->map(fn ($c) => $c->computedProgress());
-        $milestoneRows = $this->milestones->pluck('progress');
+        $projects = $this->projects;
+        $linkedProjectIds = $projects->pluck('id');
 
-        $all = $childRows->concat($milestoneRows);
+        $childRows = $this->children->map(fn (self $c) => $c->computedProgress());
+        $projectRows = $projects->map(fn (Project $p) => $p->computedProgress());
+
+        // Each piece of work gets one vote. A milestone sitting inside a project
+        // that is itself linked here already counts through that project's
+        // percentage, so counting it again would let the same work vote twice —
+        // and would quietly weight big projects more heavily than small ones.
+        $milestoneRows = $this->milestones
+            ->reject(fn (Milestone $m) => $m->project_id !== null && $linkedProjectIds->contains($m->project_id))
+            ->pluck('progress');
+
+        $all = $childRows->concat($projectRows)->concat($milestoneRows);
         if ($all->isEmpty()) {
             return (int) $this->progress;
         }

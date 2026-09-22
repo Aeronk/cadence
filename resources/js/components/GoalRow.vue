@@ -6,6 +6,8 @@ import {
     ChevronRight,
     Circle,
     Flag,
+    FolderKanban,
+    Link2,
     Link2Off,
     Lock,
     MoreHorizontal,
@@ -23,6 +25,7 @@ import {
     typeBadge,
     type GoalMilestone,
     type GoalNode,
+    type GoalProject,
 } from '@/lib/goals';
 import {
     DropdownMenu,
@@ -34,8 +37,9 @@ import {
 
 defineProps<{ node: GoalNode; depth: number }>();
 
-// Milestones are collapsed by default so a long tree stays readable; opening one
-// is how you see what the goal's percentage is actually made of.
+// Collapsed by default so a long tree stays readable; opening one is how you see
+// what the goal's percentage is actually made of — the projects and milestones
+// behind it.
 const showMilestones = ref(false);
 
 const emit = defineEmits<{
@@ -43,6 +47,8 @@ const emit = defineEmits<{
     (e: 'remove', node: GoalNode): void;
     (e: 'toggle-complete', node: GoalNode): void;
     (e: 'add-milestone', node: GoalNode): void;
+    (e: 'link-project', node: GoalNode): void;
+    (e: 'unlink-project', node: GoalNode, project: GoalProject): void;
     (e: 'toggle-milestone', milestone: GoalMilestone): void;
     (e: 'unlink-milestone', milestone: GoalMilestone): void;
     (e: 'remove-milestone', milestone: GoalMilestone): void;
@@ -99,15 +105,19 @@ const emit = defineEmits<{
             </span>
 
             <button
-                v-if="node.milestones_count > 0"
-                class="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                :title="`${node.milestones_count} milestone(s)`"
+                v-if="node.milestones_count > 0 || node.projects_count > 0"
+                class="flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                :title="`${node.projects_count} project(s), ${node.milestones_count} milestone(s)`"
                 @click="showMilestones = !showMilestones"
             >
                 <ChevronDown v-if="showMilestones" class="h-3.5 w-3.5" />
                 <ChevronRight v-else class="h-3.5 w-3.5" />
-                <Flag class="h-3 w-3" />
-                {{ node.milestones_count }}
+                <span v-if="node.projects_count" class="flex items-center gap-1">
+                    <FolderKanban class="h-3 w-3" />{{ node.projects_count }}
+                </span>
+                <span v-if="node.milestones_count" class="flex items-center gap-1">
+                    <Flag class="h-3 w-3" />{{ node.milestones_count }}
+                </span>
             </button>
 
             <div class="flex shrink-0 items-center gap-2">
@@ -138,6 +148,9 @@ const emit = defineEmits<{
                         <DropdownMenuItem @select="emit('add-milestone', node)">
                             <Plus class="mr-2 h-4 w-4" /> Add milestone
                         </DropdownMenuItem>
+                        <DropdownMenuItem @select="emit('link-project', node)">
+                            <Link2 class="mr-2 h-4 w-4" /> Link a project
+                        </DropdownMenuItem>
                         <DropdownMenuItem @select="emit('toggle-complete', node)">
                             <CheckCircle2 class="mr-2 h-4 w-4" />
                             {{ node.completed_at ? 'Reopen' : 'Mark done' }}
@@ -153,14 +166,45 @@ const emit = defineEmits<{
 
         <!-- What the percentage is made of. -->
         <div
-            v-if="showMilestones && node.milestones.length"
+            v-if="showMilestones && (node.milestones.length || node.projects.length)"
             class="space-y-2 border-t border-dashed bg-muted/30 px-3 py-3"
             :style="{ paddingLeft: `${1.75 + depth * 1.25}rem` }"
         >
             <div
+                v-for="p in node.projects"
+                :key="`project-${p.id}`"
+                class="group/p flex items-center gap-3"
+            >
+                <FolderKanban class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <div class="min-w-0 flex-1">
+                    <a :href="p.url" class="truncate text-xs font-medium hover:underline">
+                        {{ p.title }}
+                    </a>
+                    <p class="text-[11px] text-muted-foreground">
+                        Project<template v-if="p.due_date"> &middot; due {{ formatDate(p.due_date) }}</template>
+                    </p>
+                </div>
+                <div class="hidden w-24 sm:block">
+                    <div class="h-1 overflow-hidden rounded-full bg-muted">
+                        <div class="h-full bg-primary/70" :style="{ width: `${p.progress}%` }" />
+                    </div>
+                </div>
+                <span class="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+                    {{ p.progress }}%
+                </span>
+                <button
+                    class="opacity-0 transition group-hover/p:opacity-100"
+                    title="Unlink from this goal"
+                    @click="emit('unlink-project', node, p)"
+                >
+                    <Link2Off class="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+            </div>
+            <div
                 v-for="m in node.milestones"
                 :key="m.id"
                 class="group/m flex items-center gap-3"
+                :class="{ 'opacity-60': m.counted_via_project }"
             >
                 <button
                     class="shrink-0 text-muted-foreground transition hover:text-foreground"
@@ -190,6 +234,9 @@ const emit = defineEmits<{
                         <template v-if="m.due_date">
                             <span> &middot; </span>due {{ formatDate(m.due_date) }}
                         </template>
+                        <!-- Shown, but not counted again: its project is linked
+                             here and already carries this milestone's progress. -->
+                        <span v-if="m.counted_via_project"> &middot; counted via project</span>
                     </p>
                 </div>
 
@@ -233,6 +280,8 @@ const emit = defineEmits<{
             @remove="(n) => emit('remove', n)"
             @toggle-complete="(n) => emit('toggle-complete', n)"
             @add-milestone="(n) => emit('add-milestone', n)"
+            @link-project="(n) => emit('link-project', n)"
+            @unlink-project="(n, p) => emit('unlink-project', n, p)"
             @toggle-milestone="(m) => emit('toggle-milestone', m)"
             @unlink-milestone="(m) => emit('unlink-milestone', m)"
             @remove-milestone="(m) => emit('remove-milestone', m)"

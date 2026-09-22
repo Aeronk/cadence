@@ -8,6 +8,7 @@ use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Goals\GoalController;
+use App\Http\Controllers\Goals\GoalProjectController;
 use App\Http\Controllers\Integrations\OAuthController;
 use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Meetings\ExtractActionItemsController;
@@ -87,6 +88,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('goals/{goal}', [GoalController::class, 'show'])->name('goals.show');
     Route::patch('goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
     Route::delete('goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
+
+    // Projects a goal is being pursued through. Linkable from either end.
+    Route::post('goals/{goal}/projects', [GoalProjectController::class, 'store'])
+        ->name('goals.projects.store');
+    Route::delete('goals/{goal}/projects/{project}', [GoalProjectController::class, 'destroy'])
+        ->name('goals.projects.destroy');
 
     Route::get('personal-events', [PersonalEventController::class, 'index'])->name('personal-events.index');
     Route::post('personal-events', [PersonalEventController::class, 'store'])->name('personal-events.store');

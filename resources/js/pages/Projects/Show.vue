@@ -11,15 +11,22 @@ import {
     FileText,
     Info,
     LayoutGrid,
+    Link2,
+    Link2Off,
+    ListTodo,
     MessageSquare,
     Milestone as MilestoneIcon,
     PauseCircle,
     Paperclip,
+    Plane,
     Pencil,
     PlayCircle,
     Plus,
+    StickyNote,
+    Target,
     Trash2,
     UserPlus,
+    Users,
     X,
 } from 'lucide-vue-next';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -102,6 +109,18 @@ type ProjectFile = {
 };
 type Member = { id: number; name: string; email: string };
 
+type LinkedGoal = { id: number; title: string; type: string; status: string; url: string };
+type ProjectMeeting = {
+    id: number; title: string; starts_at: string | null; ends_at: string | null;
+    location: string | null; url: string;
+};
+type ProjectTrip = {
+    id: number; name: string; destination: string | null; departs_at: string | null;
+    returns_at: string | null; status: string; traveller: string | null; url: string;
+};
+type ProjectNote = { id: number; title: string; body: string | null; color: string | null; is_pinned: boolean; updated_at: string };
+type ProjectTodo = { id: number; title: string; due_date: string | null; completed_at: string | null; priority: string };
+
 const props = defineProps<{
     project: Project;
     comments: Comment[];
@@ -111,6 +130,15 @@ const props = defineProps<{
     milestones: Milestone[];
     files: ProjectFile[];
     workspace_members: Member[];
+    meetings: ProjectMeeting[];
+    trips: ProjectTrip[];
+    // Personal records, so the server only sends the ones belonging to whoever
+    // is looking — a project page is shared with the whole team.
+    notes: ProjectNote[];
+    todos: ProjectTodo[];
+    goals: LinkedGoal[];
+    linkable_goals: { id: number; title: string; type: string }[];
+    progress: number;
 }>();
 
 const colorPill = (color: string | undefined) => ({
@@ -128,14 +156,46 @@ const colorPill = (color: string | undefined) => ({
 
 const page = usePage<{ auth: { user: { id: number } } }>();
 
-const tab = ref<'overview' | 'board' | 'milestones' | 'files' | 'comments'>('overview');
+const tab = ref<
+    'overview' | 'board' | 'milestones' | 'work' | 'files' | 'comments'
+>('overview');
+const workCount = computed(
+    () => props.meetings.length + props.trips.length + props.notes.length + props.todos.length,
+);
 const tabs = computed(() => [
     { id: 'overview' as const, label: 'Overview', icon: Info },
     { id: 'board' as const, label: 'Board', icon: LayoutGrid },
     { id: 'milestones' as const, label: `Milestones (${props.milestones.length})`, icon: MilestoneIcon },
+    // Everything else that belongs to this project but is not a task: meetings,
+    // travel, and the notes and to-dos you filed under it.
+    { id: 'work' as const, label: `Related (${workCount.value})`, icon: Link2 },
     { id: 'files' as const, label: `Files (${props.files.length})`, icon: Paperclip },
     { id: 'comments' as const, label: `Comments (${props.comments.length})`, icon: MessageSquare },
 ]);
+
+/* Goals this project serves. Personal to the viewer, hence scoped server-side. */
+const goalOpen = ref(false);
+const goalToLink = ref<number | null>(null);
+
+function linkGoal() {
+    if (!goalToLink.value) return;
+    router.post(
+        `/goals/${goalToLink.value}/projects`,
+        { project_id: props.project.id },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                goalOpen.value = false;
+                goalToLink.value = null;
+            },
+        },
+    );
+}
+
+function unlinkGoal(goal: LinkedGoal) {
+    if (!confirm(`Unlink this project from "${goal.title}"? Nothing is deleted.`)) return;
+    router.delete(`/goals/${goal.id}/projects/${props.project.id}`, { preserveScroll: true });
+}
 
 const isArchived = computed(() => props.project.archived_at !== null);
 
@@ -502,6 +562,53 @@ function deleteMilestone(m: Milestone) {
                     <p class="mt-1 font-medium">{{ project.due_date ?? '—' }}</p>
                 </div>
 
+                <!-- The outcomes this project exists to move. Personal to the
+                     viewer: goals belong to individuals, not to the project. -->
+                <div class="rounded-lg border p-4 md:col-span-3">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div>
+                            <h2 class="flex items-center gap-2 font-semibold">
+                                <Target class="h-4 w-4" /> Goals ({{ goals.length }})
+                            </h2>
+                            <p class="text-xs text-muted-foreground">
+                                This project's progress ({{ progress }}%) counts towards each of these.
+                                Only your own goals are shown.
+                            </p>
+                        </div>
+                        <Button
+                            v-if="linkable_goals.length"
+                            variant="outline"
+                            size="sm"
+                            @click="goalOpen = true"
+                        >
+                            <Link2 class="mr-1.5 h-3.5 w-3.5" /> Link goal
+                        </Button>
+                    </div>
+
+                    <p v-if="!goals.length" class="text-sm text-muted-foreground">
+                        Not linked to any of your goals yet.
+                    </p>
+                    <div v-else class="flex flex-wrap gap-2">
+                        <span
+                            v-for="g in goals"
+                            :key="g.id"
+                            class="group flex items-center gap-2 rounded-full border bg-background py-1 pl-3 pr-2 text-sm"
+                        >
+                            <a :href="g.url" class="hover:underline">{{ g.title }}</a>
+                            <span class="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {{ g.type }}
+                            </span>
+                            <button
+                                class="opacity-0 transition group-hover:opacity-100"
+                                title="Unlink"
+                                @click="unlinkGoal(g)"
+                            >
+                                <Link2Off class="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                            </button>
+                        </span>
+                    </div>
+                </div>
+
                 <!-- Team management -->
                 <div class="rounded-lg border p-4 md:col-span-3">
                     <div class="mb-3 flex items-center justify-between">
@@ -690,6 +797,123 @@ function deleteMilestone(m: Milestone) {
             </section>
 
             <!-- Files -->
+            <!-- Everything that belongs to this project but is not a task. -->
+            <section v-else-if="tab === 'work'" class="space-y-6">
+                <div>
+                    <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <Calendar class="h-4 w-4" /> Meetings ({{ meetings.length }})
+                    </h3>
+                    <div
+                        v-if="!meetings.length"
+                        class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
+                    >
+                        No meetings on this project yet.
+                    </div>
+                    <div v-else class="divide-y rounded-lg border">
+                        <a
+                            v-for="m in meetings"
+                            :key="m.id"
+                            :href="m.url"
+                            class="flex items-center gap-3 p-3 transition hover:bg-muted/50"
+                        >
+                            <Calendar class="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ m.title }}</span>
+                            <span class="shrink-0 text-xs text-muted-foreground">
+                                {{ m.starts_at ? new Date(m.starts_at).toLocaleString() : '' }}
+                            </span>
+                        </a>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <Plane class="h-4 w-4" /> Travel ({{ trips.length }})
+                    </h3>
+                    <div
+                        v-if="!trips.length"
+                        class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
+                    >
+                        No travel filed under this project.
+                    </div>
+                    <div v-else class="divide-y rounded-lg border">
+                        <a
+                            v-for="t in trips"
+                            :key="t.id"
+                            :href="t.url"
+                            class="flex items-center gap-3 p-3 transition hover:bg-muted/50"
+                        >
+                            <Plane class="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-medium">{{ t.name }}</p>
+                                <p class="text-xs text-muted-foreground">
+                                    <span v-if="t.destination">{{ t.destination }} &middot; </span>
+                                    {{ t.departs_at }} → {{ t.returns_at }}
+                                    <span v-if="t.traveller"> &middot; {{ t.traveller }}</span>
+                                </p>
+                            </div>
+                            <span class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] capitalize">
+                                {{ t.status?.replace('_', ' ') }}
+                            </span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="grid gap-6 md:grid-cols-2">
+                    <div>
+                        <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold">
+                            <StickyNote class="h-4 w-4" /> Your notes ({{ notes.length }})
+                        </h3>
+                        <p class="mb-2 text-xs text-muted-foreground">
+                            Notes stay private to you, even on a shared project.
+                        </p>
+                        <div
+                            v-if="!notes.length"
+                            class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
+                        >
+                            Nothing filed here.
+                        </div>
+                        <div v-else class="divide-y rounded-lg border">
+                            <div v-for="n in notes" :key="n.id" class="p-3">
+                                <p class="truncate text-sm font-medium">{{ n.title }}</p>
+                                <p class="truncate text-xs text-muted-foreground" v-html="n.body || ''" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="mb-2 flex items-center gap-2 text-sm font-semibold">
+                            <ListTodo class="h-4 w-4" /> Your to-dos ({{ todos.length }})
+                        </h3>
+                        <p class="mb-2 text-xs text-muted-foreground">
+                            Personal to you, unlike the project's tasks.
+                        </p>
+                        <div
+                            v-if="!todos.length"
+                            class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
+                        >
+                            Nothing filed here.
+                        </div>
+                        <div v-else class="divide-y rounded-lg border">
+                            <div v-for="t in todos" :key="t.id" class="flex items-center gap-2 p-3">
+                                <CheckCircle2
+                                    v-if="t.completed_at"
+                                    class="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                                />
+                                <span
+                                    class="min-w-0 flex-1 truncate text-sm"
+                                    :class="{ 'text-muted-foreground line-through': t.completed_at }"
+                                >
+                                    {{ t.title }}
+                                </span>
+                                <span v-if="t.due_date" class="shrink-0 text-xs text-muted-foreground">
+                                    {{ t.due_date }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section v-else-if="tab === 'files'">
                 <ProjectFiles
                     :project-id="project.id"
@@ -709,5 +933,37 @@ function deleteMilestone(m: Milestone) {
                 />
             </section>
         </div>
+
+        <Dialog v-model:open="goalOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Link this project to a goal</DialogTitle>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="linkGoal">
+                    <p class="text-sm text-muted-foreground">
+                        This project's progress will count towards the goal. Milestones inside
+                        the project stop being counted separately, so nothing is double-counted.
+                    </p>
+                    <div>
+                        <Label for="project-goal">Goal</Label>
+                        <select
+                            id="project-goal"
+                            v-model="goalToLink"
+                            required
+                            class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                            <option :value="null" disabled>Choose a goal…</option>
+                            <option v-for="g in linkable_goals" :key="g.id" :value="g.id">
+                                {{ g.title }} — {{ g.type }}
+                            </option>
+                        </select>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" @click="goalOpen = false">Cancel</Button>
+                        <Button type="submit" :disabled="!goalToLink">Link</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

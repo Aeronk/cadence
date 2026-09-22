@@ -54,6 +54,14 @@ class TripController extends Controller
             'departs_at' => ['required', 'date'],
             'returns_at' => ['required', 'date', 'after_or_equal:departs_at'],
             'notes' => ['nullable', 'string'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         $trip = Trip::create($data + [
@@ -78,6 +86,14 @@ class TripController extends Controller
             'returns_at' => ['sometimes', 'required', 'date', 'after_or_equal:departs_at'],
             'status' => ['nullable', Rule::in(['planned', 'in_progress', 'completed', 'cancelled'])],
             'notes' => ['nullable', 'string'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         $trip->fill($data)->save();

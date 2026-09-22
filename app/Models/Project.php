@@ -37,8 +37,11 @@ class Project extends Model
     ];
 
     public const STATE_ACTIVE = 'active';
+
     public const STATE_ON_HOLD = 'on_hold';
+
     public const STATE_COMPLETED = 'completed';
+
     public const STATES = [self::STATE_ACTIVE, self::STATE_ON_HOLD, self::STATE_COMPLETED];
 
     protected function casts(): array
@@ -93,6 +96,73 @@ class Project extends Model
     public function files(): HasMany
     {
         return $this->hasMany(ProjectFile::class)->latest();
+    }
+
+    /**
+     * The goals this project serves. Many-to-many because one project often
+     * advances more than one goal at a time.
+     */
+    public function goals(): BelongsToMany
+    {
+        return $this->belongsToMany(Goal::class, 'goal_project')->withTimestamps();
+    }
+
+    public function meetings(): HasMany
+    {
+        return $this->hasMany(Meeting::class);
+    }
+
+    public function trips(): HasMany
+    {
+        return $this->hasMany(Trip::class);
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(Note::class);
+    }
+
+    public function todos(): HasMany
+    {
+        return $this->hasMany(Todo::class);
+    }
+
+    /**
+     * How far along the project is, as a percentage.
+     *
+     * Milestones win when there are any, because they are the deliberate
+     * checkpoints someone set; otherwise it falls back to the share of tasks
+     * that are done. A project nobody has broken down yet reads 0 rather than
+     * dividing by zero, and one marked complete reads 100 so the badge and the
+     * bar cannot disagree.
+     */
+    public function computedProgress(): int
+    {
+        if ($this->completed_at !== null || $this->state === self::STATE_COMPLETED) {
+            return 100;
+        }
+
+        $milestones = $this->relationLoaded('milestones')
+            ? $this->milestones
+            : $this->milestones()->get(['id', 'progress']);
+
+        if ($milestones->isNotEmpty()) {
+            return (int) round($milestones->avg('progress'));
+        }
+
+        // Uses eager-loaded counts when the caller supplied them. The goals
+        // page walks a whole tree of projects, and querying twice per project
+        // there turned one page into dozens of round trips.
+        $total = $this->tasks_count ?? $this->tasks()->count();
+
+        if ($total === 0) {
+            return 0;
+        }
+
+        $done = $this->completed_tasks_count
+            ?? $this->tasks()->whereNotNull('completed_at')->count();
+
+        return (int) round($done / $total * 100);
     }
 
     public function isArchived(): bool

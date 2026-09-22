@@ -10,12 +10,23 @@ export type GoalHorizon = 'year' | 'quarter' | 'month';
 export type GoalMilestone = {
     id: number;
     title: string;
+    /** Already represented by a linked project, so not counted a second time. */
+    counted_via_project: boolean;
     description: string | null;
     progress: number;
     is_manual: boolean;
     due_date: string | null;
     completed_at: string | null;
     project: { id: number; title: string; url: string } | null;
+};
+
+export type GoalProject = {
+    id: number;
+    title: string;
+    progress: number;
+    state: string;
+    due_date: string | null;
+    url: string;
 };
 
 export type Goal = {
@@ -35,6 +46,8 @@ export type Goal = {
     url: string;
     milestones_count: number;
     milestones: GoalMilestone[];
+    projects_count: number;
+    projects: GoalProject[];
 };
 
 export type GoalNode = Goal & { children: GoalNode[] };

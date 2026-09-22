@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import {
+    CalendarDays,
     CalendarPlus,
     CheckCircle2,
     Circle,
     Clock,
+    Link2Off,
+    MapPin,
     Pencil,
+    Plane,
     Repeat,
     Trash2,
     Users,
@@ -66,6 +70,32 @@ type Task = {
     completed_at: string | null;
     meeting_id: number | null;
     meeting: Meeting | null;
+    trip_id: number | null;
+};
+
+type LinkedTrip = {
+    id: number;
+    name: string;
+    destination: string | null;
+    departs_at: string | null;
+    returns_at: string | null;
+    url: string;
+};
+
+type LinkableTrip = {
+    id: number;
+    label: string;
+    departs_at: string | null;
+    returns_at: string | null;
+    /** The trip whose dates cover this task's due date — the likely answer. */
+    covers_due_date: boolean;
+};
+
+/** What else falls on the day this task is due. */
+type DayContext = {
+    date: string | null;
+    meetings: { id: number; title: string; starts_at: string | null; location: string | null; url: string }[];
+    trips: { id: number; name: string; destination: string | null; url: string }[];
 };
 
 type Comment = { id: number; body: string; user: { id: number; name: string }; created_at: string };
@@ -79,6 +109,9 @@ const props = defineProps<{
     priorities: { id: number; name: string; color: string; level: number }[];
     assignable_users: Person[];
     recurrence_options: { value: string; label: string }[];
+    trip: LinkedTrip | null;
+    linkable_trips: LinkableTrip[];
+    day_context: DayContext;
 }>();
 
 const page = usePage<{ auth: { user: { id: number } } }>();
@@ -101,6 +134,62 @@ const categoryLabel = computed(
 
 const repeatLabel = computed(
     () => props.recurrence_options.find((o) => o.value === props.task.recurrence_rule)?.label ?? null,
+);
+
+/* -------------------------------------------------------------------- travel */
+
+const tripOpen = ref(false);
+const tripToLink = ref<number | null>(null);
+
+/** The trip whose dates cover the due date, offered first as the likely answer. */
+const suggestedTrip = computed(() => props.linkable_trips.find((t) => t.covers_due_date) ?? null);
+
+function openTripPicker() {
+    tripToLink.value = suggestedTrip.value?.id ?? null;
+    tripOpen.value = true;
+}
+
+function linkTrip() {
+    if (!tripToLink.value) return;
+    router.patch(
+        tasksRoutes.update(props.task.id).url,
+        { trip_id: tripToLink.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                tripOpen.value = false;
+                tripToLink.value = null;
+            },
+        },
+    );
+}
+
+function unlinkTrip() {
+    router.patch(
+        tasksRoutes.update(props.task.id).url,
+        { trip_id: null },
+        { preserveScroll: true },
+    );
+}
+
+const dayLabel = computed(() => {
+    if (!props.day_context.date) return '';
+    const [y, m, d] = props.day_context.date.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+    });
+});
+
+const timeOnly = (iso: string | null) =>
+    iso
+        ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : '';
+
+/** Nothing to show means the whole panel section stays out of the way. */
+const hasDayContext = computed(
+    () => props.day_context.meetings.length > 0 || props.day_context.trips.length > 0,
 );
 
 /* ------------------------------------------------------------------ editing */
@@ -349,6 +438,120 @@ const meetingWhen = computed(() => {
                     </div>
                 </div>
             </div>
+
+            <!-- Travel + what else is on that day. A due date means little on
+                 its own; this is the context that says whether it is doable. -->
+            <div v-if="trip || day_context.date || linkable_trips.length" class="rounded-lg border">
+                <div class="flex items-center justify-between border-b px-4 py-2.5">
+                    <h2 class="flex items-center gap-1.5 text-sm font-semibold">
+                        <CalendarDays class="h-4 w-4" /> Around this task
+                    </h2>
+                    <!-- Scheduling already has a button in the header; this
+                         panel only adds what was missing. -->
+                    <Button
+                        v-if="!trip && linkable_trips.length"
+                        variant="outline"
+                        size="sm"
+                        @click="openTripPicker"
+                    >
+                        <Plane class="mr-1.5 h-3.5 w-3.5" /> Link travel
+                    </Button>
+                </div>
+
+                <div class="divide-y">
+                    <!-- Linked travel -->
+                    <div v-if="trip" class="group flex items-center gap-3 px-4 py-3">
+                        <Plane class="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div class="min-w-0 flex-1">
+                            <a :href="trip.url" class="truncate text-sm font-medium hover:underline">
+                                {{ trip.name }}
+                            </a>
+                            <p class="text-xs text-muted-foreground">
+                                <span v-if="trip.destination">{{ trip.destination }} &middot; </span>
+                                {{ trip.departs_at }} → {{ trip.returns_at }}
+                            </p>
+                        </div>
+                        <button
+                            class="opacity-0 transition group-hover:opacity-100"
+                            title="Unlink this trip"
+                            @click="unlinkTrip"
+                        >
+                            <Link2Off class="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        </button>
+                    </div>
+
+                    <!-- Same-day meetings and travel, inferred from the due date. -->
+                    <div v-if="hasDayContext" class="px-4 py-3">
+                        <p class="mb-2 text-xs text-muted-foreground">
+                            Also on {{ dayLabel }}
+                        </p>
+                        <ul class="space-y-1.5">
+                            <li
+                                v-for="m in day_context.meetings"
+                                :key="`m-${m.id}`"
+                                class="flex items-center gap-2 text-sm"
+                            >
+                                <Clock class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span class="tabular-nums text-muted-foreground">{{ timeOnly(m.starts_at) }}</span>
+                                <a :href="m.url" class="truncate hover:underline">{{ m.title }}</a>
+                                <span v-if="m.location" class="truncate text-xs text-muted-foreground">
+                                    &middot; {{ m.location }}
+                                </span>
+                            </li>
+                            <li
+                                v-for="t in day_context.trips"
+                                :key="`t-${t.id}`"
+                                class="flex items-center gap-2 text-sm"
+                            >
+                                <MapPin class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <a :href="t.url" class="truncate hover:underline">
+                                    Away: {{ t.name }}
+                                </a>
+                                <span v-if="t.destination" class="text-xs text-muted-foreground">
+                                    &middot; {{ t.destination }}
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <p
+                        v-else-if="day_context.date"
+                        class="px-4 py-3 text-sm text-muted-foreground"
+                    >
+                        Nothing else on {{ dayLabel }}.
+                    </p>
+                    <p v-else class="px-4 py-3 text-sm text-muted-foreground">
+                        This task has no due date, so there is no day to check against.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Pick the trip this task belongs to. -->
+            <Dialog v-model:open="tripOpen">
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Link this task to travel</DialogTitle>
+                    </DialogHeader>
+                    <form class="space-y-4" @submit.prevent="linkTrip">
+                        <div>
+                            <Label for="task-trip">Trip</Label>
+                            <select id="task-trip" v-model="tripToLink" required :class="selectClass">
+                                <option :value="null" disabled>Choose a trip…</option>
+                                <option v-for="t in linkable_trips" :key="t.id" :value="t.id">
+                                    {{ t.label }}<template v-if="t.covers_due_date"> — covers the due date</template>
+                                </option>
+                            </select>
+                            <p v-if="suggestedTrip" class="mt-1 text-xs text-muted-foreground">
+                                Preselected: this task is due while you are away.
+                            </p>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" @click="tripOpen = false">Cancel</Button>
+                            <Button type="submit" :disabled="!tripToLink">Link</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
 
             <!-- Edit ------------------------------------------------------- -->
             <Dialog v-model:open="editOpen">

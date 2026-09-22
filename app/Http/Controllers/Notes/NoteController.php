@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Note;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -37,6 +38,14 @@ class NoteController extends Controller
             'body' => ['nullable', 'string'],
             'color' => ['nullable', 'string', 'max:32'],
             'is_pinned' => ['nullable', 'boolean'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         Note::create($data + [
@@ -56,6 +65,14 @@ class NoteController extends Controller
             'body' => ['nullable', 'string'],
             'color' => ['nullable', 'string', 'max:32'],
             'is_pinned' => ['nullable', 'boolean'],
+            // Filing this under a project is optional; it must be one in the
+            // same workspace.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')
+                    ->where('workspace_id', $request->user()->currentWorkspace()->id)
+                    ->whereNull('deleted_at'),
+            ],
         ]);
 
         $note->fill($data)->save();

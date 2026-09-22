@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Projects;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
+use App\Models\Goal;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,9 +41,16 @@ class ProjectController extends Controller
         ]);
     }
 
-    public function show(Project $project): Response
+    public function show(Request $request, Project $project): Response
     {
         $this->authorize('view', $project);
+
+        $user = $request->user();
+        // Goals, notes and to-dos are personal records. A project page is shared
+        // with the whole project team, so each of these is scoped to the person
+        // looking — otherwise opening a project would expose a colleague's
+        // private goals and notes.
+        $manages = $project->workspace->roleFor($user)?->canManageWorkspace() ?? false;
 
         return Inertia::render('Projects/Show', [
             'project' => $project->load(['status', 'priority', 'creator', 'members', 'tags', 'clients']),
@@ -90,6 +98,61 @@ class ProjectController extends Controller
                 ->select('users.id', 'users.name', 'users.email')
                 ->orderBy('users.name')
                 ->get(),
+            'meetings' => $project->meetings()
+                ->orderBy('starts_at')
+                ->get(['id', 'title', 'starts_at', 'ends_at', 'location', 'meeting_url'])
+                ->map(fn ($m) => [
+                    'id' => $m->id,
+                    'title' => $m->title,
+                    'starts_at' => $m->starts_at?->toIso8601String(),
+                    'ends_at' => $m->ends_at?->toIso8601String(),
+                    'location' => $m->location ?: $m->meeting_url,
+                    'url' => route('meetings.show', $m->id),
+                ]),
+            // Travel follows the trip policy: your own, plus everyone's if you
+            // manage the workspace.
+            'trips' => $project->trips()
+                ->when(! $manages, fn ($q) => $q->where('user_id', $user->id))
+                ->with('user:id,name')
+                ->orderBy('departs_at')
+                ->get(['id', 'user_id', 'name', 'destination_city', 'destination_country', 'departs_at', 'returns_at', 'status'])
+                ->map(fn ($t) => [
+                    'id' => $t->id,
+                    'name' => $t->name,
+                    'destination' => trim(($t->destination_city ?? '').' '.($t->destination_country ?? '')) ?: null,
+                    'departs_at' => $t->departs_at?->toDateString(),
+                    'returns_at' => $t->returns_at?->toDateString(),
+                    'status' => $t->status,
+                    'traveller' => $t->user?->name,
+                    'url' => route('trips.show', $t->id),
+                ]),
+            'notes' => $project->notes()
+                ->where('user_id', $user->id)
+                ->latest()
+                ->get(['id', 'title', 'body', 'color', 'is_pinned', 'updated_at']),
+            'todos' => $project->todos()
+                ->where('user_id', $user->id)
+                ->orderBy('position')
+                ->get(['id', 'title', 'due_date', 'completed_at', 'priority']),
+            'goals' => $project->goals()
+                ->where('goals.user_id', $user->id)
+                ->orderBy('title')
+                ->get(['goals.id', 'goals.title', 'goals.type', 'goals.status'])
+                ->map(fn ($g) => [
+                    'id' => $g->id,
+                    'title' => $g->title,
+                    'type' => $g->type,
+                    'status' => $g->status,
+                    'url' => route('goals.show', $g->id),
+                ]),
+            'linkable_goals' => Goal::query()
+                ->forWorkspace($project->workspace)
+                ->where('user_id', $user->id)
+                ->whereDoesntHave('projects', fn ($q) => $q->where('projects.id', $project->id))
+                ->orderBy('title')
+                ->get(['id', 'title', 'type'])
+                ->map(fn ($g) => ['id' => $g->id, 'title' => $g->title, 'type' => $g->type]),
+            'progress' => $project->computedProgress(),
         ]);
     }
 

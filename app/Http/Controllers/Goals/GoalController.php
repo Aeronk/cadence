@@ -27,6 +27,17 @@ class GoalController extends Controller
             ->with([
                 'children',
                 'milestones' => fn ($q) => $q->with('project:id,title')->orderBy('due_date'),
+                // computedProgress() reads each project's own progress, which is
+                // itself read from its milestones — loaded here so a goal tree
+                // does not fire a query per project per node.
+                'projects' => fn ($q) => $q->with('milestones:id,project_id,progress')
+                    // A project with no milestones falls back to counting tasks;
+                    // loading those counts here keeps it to one query overall.
+                    ->withCount([
+                        'tasks',
+                        'tasks as completed_tasks_count' => fn ($q) => $q->whereNotNull('completed_at'),
+                    ])
+                    ->orderBy('title'),
             ])
             ->orderBy('position')
             ->orderBy('title')
@@ -72,6 +83,14 @@ class GoalController extends Controller
             ->with([
                 'children',
                 'milestones' => fn ($q) => $q->with('project:id,title')->orderBy('position'),
+                'projects' => fn ($q) => $q->with('milestones:id,project_id,progress')
+                    // A project with no milestones falls back to counting tasks;
+                    // loading those counts here keeps it to one query overall.
+                    ->withCount([
+                        'tasks',
+                        'tasks as completed_tasks_count' => fn ($q) => $q->whereNotNull('completed_at'),
+                    ])
+                    ->orderBy('title'),
             ])
             ->orderBy('position')
             ->orderBy('title')
@@ -244,16 +263,33 @@ class GoalController extends Controller
             // underneath it. The edit form needs it separately so it never writes
             // a rolled-up average back as though it were a hand-set value.
             'own_progress' => (int) $g->progress,
-            'is_leaf' => $g->children->isEmpty() && $g->milestones->isEmpty(),
+            'is_leaf' => $g->children->isEmpty()
+                && $g->milestones->isEmpty()
+                && $g->projects->isEmpty(),
             'overdue' => $g->isOverdue(),
             'completed_at' => $g->completed_at?->toIso8601String(),
             'url' => route('goals.show', $g->id),
             'milestones_count' => $g->milestones->count(),
+            'projects_count' => $g->projects->count(),
+            // The projects being run in service of this goal, each contributing
+            // its own progress to the number above.
+            'projects' => $g->projects->map(fn (Project $p) => [
+                'id' => $p->id,
+                'title' => $p->title,
+                'progress' => $p->computedProgress(),
+                'state' => $p->state,
+                'due_date' => $p->due_date?->toDateString(),
+                'url' => route('projects.show', $p->id),
+            ])->values(),
             // Shown under the goal so progress is traceable to the work behind it
             // rather than being an unexplained percentage.
             'milestones' => $g->milestones->map(fn (Milestone $m) => [
                 'id' => $m->id,
                 'title' => $m->title,
+                // True when this milestone sits inside a project that is itself
+                // linked here: it still shows, but it is not counted twice.
+                'counted_via_project' => $m->project_id !== null
+                    && $g->projects->contains('id', $m->project_id),
                 'description' => $m->description,
                 'progress' => (int) $m->progress,
                 'is_manual' => $m->tracksProgressManually(),
