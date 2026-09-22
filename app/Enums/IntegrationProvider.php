@@ -49,12 +49,35 @@ enum IntegrationProvider: string
     }
 
     /**
+     * Whether this deployment actually holds OAuth credentials for the provider.
+     *
+     * Without them the authorisation URL is built with a null client_id, which
+     * http_build_query drops silently — so the user is sent to Google and told
+     * "The OAuth client was not found" with nothing pointing back at the real
+     * cause. Better to refuse the trip.
+     */
+    public function credentialsConfigured(): bool
+    {
+        $key = match ($this->connectsVia()) {
+            self::Gmail => 'google',
+            self::Microsoft => 'microsoft',
+            default => null,
+        };
+
+        return $key !== null
+            && filled(config("integrations.{$key}.client_id"))
+            && filled(config("integrations.{$key}.client_secret"));
+    }
+
+    /**
      * Why a tile cannot be clicked, in words a user can act on. Null when it can.
      */
     public function unavailableReason(): ?string
     {
         if ($this->isConnectable()) {
-            return null;
+            return $this->credentialsConfigured()
+                ? null
+                : 'Not configured on this server';
         }
 
         return match ($this) {

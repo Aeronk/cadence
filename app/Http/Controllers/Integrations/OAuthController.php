@@ -21,6 +21,16 @@ class OAuthController extends Controller
     {
         $providerEnum = $this->resolveProvider($provider);
 
+        // Sending someone to Google with no client_id gets them an opaque
+        // "OAuth client was not found" that says nothing about the real cause.
+        if (! $providerEnum->credentialsConfigured()) {
+            return redirect()->route('integrations.index')->with(
+                'flash.error',
+                $providerEnum->label().' is not configured on this server yet. '
+                    .'An administrator needs to add the OAuth client id and secret.',
+            );
+        }
+
         $state = Str::random(40);
         $request->session()->put('integration_oauth_state', [
             'state' => $state,

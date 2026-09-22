@@ -29,8 +29,10 @@ class ConnectProviderTest extends TestCase
 
         config([
             'integrations.google.client_id' => 'test-client-id',
+            'integrations.google.client_secret' => 'test-client-secret',
             'integrations.google.redirect_uri' => 'https://cadence.test/integrations/gmail/callback',
             'integrations.microsoft.client_id' => 'ms-client-id',
+            'integrations.microsoft.client_secret' => 'ms-client-secret',
             'integrations.microsoft.redirect_uri' => 'https://cadence.test/integrations/microsoft/callback',
         ]);
     }
@@ -105,6 +107,41 @@ class ConnectProviderTest extends TestCase
                         "{$p['value']} is not connectable but gives no reason why",
                     );
                 });
+            });
+    }
+
+    public function test_connecting_without_credentials_says_so_instead_of_sending_you_to_google(): void
+    {
+        config([
+            'integrations.google.client_id' => null,
+            'integrations.google.client_secret' => null,
+        ]);
+
+        // http_build_query drops a null client_id, so the user would otherwise
+        // arrive at Google and be told "The OAuth client was not found" — an
+        // error that points nowhere near the actual cause.
+        $this->actingAs($this->user)
+            ->get('/integrations/gmail/connect')
+            ->assertRedirect(route('integrations.index'))
+            ->assertSessionHas('flash.error');
+    }
+
+    public function test_an_unconfigured_provider_is_not_offered_as_connectable(): void
+    {
+        config([
+            'integrations.google.client_id' => null,
+            'integrations.google.client_secret' => null,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('integrations.index'))
+            ->assertOk()
+            ->assertInertia(function (Assert $page) {
+                $gmail = collect($page->toArray()['props']['available_providers'])
+                    ->firstWhere('value', 'gmail');
+
+                $this->assertFalse($gmail['connectable']);
+                $this->assertSame('Not configured on this server', $gmail['unavailable_reason']);
             });
     }
 

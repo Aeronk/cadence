@@ -58,7 +58,7 @@ class IntegrationAccountController extends Controller
                 // Only a provider with its own OAuth flow can be clicked. The
                 // rest are either covered by another connection or configured
                 // in the environment, and used to render as links that 404'd.
-                'connectable' => $p->isConnectable(),
+                'connectable' => $p->isConnectable() && $p->credentialsConfigured(),
                 'unavailable_reason' => $p->unavailableReason(),
             ]),
         ]);
