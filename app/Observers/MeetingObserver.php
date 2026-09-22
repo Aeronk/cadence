@@ -15,7 +15,11 @@ class MeetingObserver
 
     public function updated(Meeting $meeting): void
     {
-        $relevant = ['title', 'description', 'location', 'meeting_url', 'starts_at', 'ends_at'];
+        $relevant = [
+            'title', 'description', 'location', 'meeting_url', 'starts_at', 'ends_at',
+            // Recurrence and conference changes alter the provider event too.
+            'recurrence_rule', 'recurrence_ends_on', 'conference_requested',
+        ];
 
         if (! collect($meeting->getChanges())->keys()->intersect($relevant)->isNotEmpty()) {
             return;

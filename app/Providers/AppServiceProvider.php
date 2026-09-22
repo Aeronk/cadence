@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Auth\ViewerRestriction;
 use App\Models\Meeting;
 use App\Models\Priority;
 use App\Models\Project;
@@ -29,8 +30,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AIProvider::class, function () {
             $key = (string) config('services.openai.key', env('OPENAI_API_KEY', ''));
             if ($key === '' || app()->environment('testing')) {
-                return new FakeProvider();
+                return new FakeProvider;
             }
+
             return new OpenAIProvider(
                 apiKey: $key,
                 model: (string) config('services.openai.model', 'gpt-4o-mini'),
@@ -76,5 +78,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Status::class, TaxonomyPolicy::class);
         Gate::policy(Priority::class, TaxonomyPolicy::class);
         Gate::policy(Tag::class, TaxonomyPolicy::class);
+
+        // Viewers are read-only. Every policy below grants writes on workspace
+        // membership alone, so this runs ahead of them all.
+        $this->app->singleton(ViewerRestriction::class);
+        Gate::before($this->app->make(ViewerRestriction::class));
     }
 }

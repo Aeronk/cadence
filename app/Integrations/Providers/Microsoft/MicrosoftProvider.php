@@ -117,7 +117,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                     'subject' => $msg['subject'] ?? null,
                     'body_text' => $msg['bodyPreview'] ?? null,
                     'status' => 'received',
-                    'sent_at' => isset($msg['receivedDateTime']) ? \Carbon\CarbonImmutable::parse($msg['receivedDateTime']) : now(),
+                    'sent_at' => isset($msg['receivedDateTime']) ? CarbonImmutable::parse($msg['receivedDateTime']) : now(),
                 ]);
 
                 $persisted++;
@@ -195,7 +195,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
 
         $persisted = 0;
         $url = $account->sync_cursor
-            ?: self::GRAPH_BASE.'/me/calendar/events/delta?$select=id,subject,bodyPreview,location,start,end,attendees,isCancelled';
+            ?: self::GRAPH_BASE.'/me/calendar/events/delta?$select=id,subject,bodyPreview,location,start,end,attendees,isCancelled,isAllDay,recurrence,seriesMasterId,organizer,webLink,onlineMeeting';
 
         $deltaLink = null;
 
@@ -212,22 +212,15 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                         ->where('integration_account_id', $account->id)
                         ->where('external_id', $event['id'])
                         ->delete();
+
                     continue;
                 }
 
+                // meeting_id is deliberately absent: it is the link Cadence owns,
+                // and must survive a sync rewriting the row.
                 CalendarEvent::query()->updateOrCreate(
                     ['integration_account_id' => $account->id, 'external_id' => $event['id']],
-                    [
-                        'workspace_id' => $account->workspace_id,
-                        'title' => $event['subject'] ?? '(no title)',
-                        'description' => $event['bodyPreview'] ?? null,
-                        'location' => $event['location']['displayName'] ?? null,
-                        'starts_at' => isset($event['start']['dateTime']) ? CarbonImmutable::parse($event['start']['dateTime']) : null,
-                        'ends_at' => isset($event['end']['dateTime']) ? CarbonImmutable::parse($event['end']['dateTime']) : null,
-                        'attendees' => collect($event['attendees'] ?? [])
-                            ->pluck('emailAddress.address')->filter()->values()->all(),
-                        'sync_status' => 'synced',
-                    ]
+                    $this->eventAttributes($account, $event),
                 );
 
                 $persisted++;
@@ -246,6 +239,46 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
         return $persisted;
     }
 
+    /**
+     * Map a Graph event onto the columns of `calendar_events`.
+     *
+     * @param  array<string, mixed>  $event
+     * @return array<string, mixed>
+     */
+    protected function eventAttributes(IntegrationAccount $account, array $event): array
+    {
+        return [
+            'workspace_id' => $account->workspace_id,
+            'title' => $event['subject'] ?? '(no title)',
+            'description' => $event['bodyPreview'] ?? null,
+            'location' => $event['location']['displayName'] ?? null,
+            'all_day' => (bool) ($event['isAllDay'] ?? false),
+            // Graph describes recurrence as an object rather than RRULE strings;
+            // stored as-is, since it is only read back to flag a series.
+            'recurrence' => isset($event['recurrence']) ? [$event['recurrence']] : null,
+            'recurring_event_id' => $event['seriesMasterId'] ?? null,
+            'organizer_email' => $event['organizer']['emailAddress']['address'] ?? null,
+            'html_link' => $event['webLink'] ?? null,
+            'conference_url' => $event['onlineMeeting']['joinUrl'] ?? null,
+            'starts_at' => isset($event['start']['dateTime'])
+                ? CarbonImmutable::parse($event['start']['dateTime'])
+                : null,
+            'ends_at' => isset($event['end']['dateTime'])
+                ? CarbonImmutable::parse($event['end']['dateTime'])
+                : null,
+            'attendees' => collect($event['attendees'] ?? [])
+                ->filter(fn ($attendee) => ! empty($attendee['emailAddress']['address']))
+                ->map(fn ($attendee) => [
+                    'email' => $attendee['emailAddress']['address'],
+                    'name' => $attendee['emailAddress']['name'] ?? null,
+                    'response_status' => $attendee['status']['response'] ?? 'none',
+                ])
+                ->values()
+                ->all(),
+            'sync_status' => 'synced',
+        ];
+    }
+
     public function createEvent(IntegrationAccount $account, Meeting $meeting): CalendarEvent
     {
         $this->ensureValidToken($account);
@@ -255,19 +288,11 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             ->throw()
             ->json();
 
+        $this->captureConferenceUrl($meeting, $response);
+
         return CalendarEvent::query()->updateOrCreate(
             ['integration_account_id' => $account->id, 'external_id' => $response['id']],
-            [
-                'workspace_id' => $account->workspace_id,
-                'meeting_id' => $meeting->id,
-                'title' => $meeting->title,
-                'description' => $meeting->description,
-                'location' => $meeting->location,
-                'starts_at' => $meeting->starts_at,
-                'ends_at' => $meeting->ends_at,
-                'attendees' => $meeting->attendees()->pluck('email')->all(),
-                'sync_status' => 'synced',
-            ]
+            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id],
         );
     }
 
@@ -275,29 +300,49 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
     {
         $this->ensureValidToken($account);
 
-        Http::withToken($account->access_token)
+        $response = Http::withToken($account->access_token)
             ->patch(self::GRAPH_BASE.'/me/events/'.$event->external_id, $this->meetingPayload($meeting))
-            ->throw();
+            ->throw()
+            ->json();
 
-        $event->forceFill([
-            'title' => $meeting->title,
-            'description' => $meeting->description,
-            'location' => $meeting->location,
-            'starts_at' => $meeting->starts_at,
-            'ends_at' => $meeting->ends_at,
-            'sync_status' => 'synced',
-        ])->save();
+        $this->captureConferenceUrl($meeting, $response);
+
+        $event->forceFill(
+            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id]
+        )->save();
 
         return $event;
+    }
+
+    /**
+     * Persist a Teams link Graph minted for us.
+     *
+     * Saved quietly on purpose: MeetingObserver watches `meeting_url`, so a normal
+     * save here would dispatch another push job and loop.
+     *
+     * @param  array<string, mixed>  $response
+     */
+    protected function captureConferenceUrl(Meeting $meeting, array $response): void
+    {
+        $link = $response['onlineMeeting']['joinUrl'] ?? null;
+
+        if ($link && $meeting->meeting_url !== $link) {
+            $meeting->meeting_url = $link;
+            $meeting->saveQuietly();
+        }
     }
 
     public function deleteEvent(IntegrationAccount $account, CalendarEvent $event): void
     {
         $this->ensureValidToken($account);
 
-        Http::withToken($account->access_token)
-            ->delete(self::GRAPH_BASE.'/me/events/'.$event->external_id)
-            ->throw();
+        $response = Http::withToken($account->access_token)
+            ->delete(self::GRAPH_BASE.'/me/events/'.$event->external_id);
+
+        // Already gone upstream is the outcome we were after.
+        if (! $response->successful() && ! in_array($response->status(), [404, 410], true)) {
+            $response->throw();
+        }
 
         $event->delete();
     }
@@ -326,7 +371,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             ->values()
             ->all();
 
-        return [
+        $payload = [
             'subject' => $meeting->title,
             'body' => [
                 'contentType' => 'HTML',
@@ -337,6 +382,69 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             'end' => ['dateTime' => $meeting->ends_at->toIso8601String(), 'timeZone' => 'UTC'],
             'attendees' => $attendees,
         ];
+
+        // A repeating meeting is one recurring event, not one event per
+        // occurrence — otherwise the series is redrawn across every calendar.
+        if ($pattern = $this->recurrencePattern($meeting)) {
+            $payload['recurrence'] = $pattern;
+        }
+
+        if ($meeting->conference_requested && ! $meeting->meeting_url) {
+            $payload['isOnlineMeeting'] = true;
+            $payload['onlineMeetingProvider'] = 'teamsForBusiness';
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Graph wants a pattern/range object rather than an RRULE string.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function recurrencePattern(Meeting $meeting): ?array
+    {
+        if (! $meeting->isRecurring()) {
+            return null;
+        }
+
+        $pattern = match ($meeting->recurrence_rule) {
+            'daily' => ['type' => 'daily', 'interval' => 1],
+            'weekly' => [
+                'type' => 'weekly',
+                'interval' => 1,
+                'daysOfWeek' => [strtolower($meeting->starts_at->format('l'))],
+            ],
+            'monthly' => [
+                'type' => 'absoluteMonthly',
+                'interval' => 1,
+                'dayOfMonth' => (int) $meeting->starts_at->format('j'),
+            ],
+            'yearly' => [
+                'type' => 'absoluteYearly',
+                'interval' => 1,
+                'dayOfMonth' => (int) $meeting->starts_at->format('j'),
+                'month' => (int) $meeting->starts_at->format('n'),
+            ],
+            default => null,
+        };
+
+        if (! $pattern) {
+            return null;
+        }
+
+        $range = $meeting->recurrence_ends_on
+            ? [
+                'type' => 'endDate',
+                'startDate' => $meeting->starts_at->toDateString(),
+                'endDate' => $meeting->recurrence_ends_on->toDateString(),
+            ]
+            : [
+                'type' => 'noEnd',
+                'startDate' => $meeting->starts_at->toDateString(),
+            ];
+
+        return ['pattern' => $pattern, 'range' => $range];
     }
 
     protected function tokenRequest(array $extra): array

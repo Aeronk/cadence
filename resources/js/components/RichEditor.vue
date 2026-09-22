@@ -62,7 +62,7 @@ watch(
     (val) => {
         if (!editor.value) return;
         if (val !== editor.value.getHTML()) {
-            editor.value.commands.setContent(val || '', { emitUpdate: false });
+            editor.value.commands.setContent(val || '', false);
         }
     },
 );

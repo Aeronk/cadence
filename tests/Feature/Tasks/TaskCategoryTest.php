@@ -60,6 +60,58 @@ class TaskCategoryTest extends TestCase
         $this->assertTrue($task->milestone->is($milestone));
     }
 
+    public function test_category_can_be_changed_when_editing_a_task(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user->currentWorkspace())->create(['created_by' => $user->id]);
+        $task = Task::factory()->for($project)->create([
+            'created_by' => $user->id,
+            'category' => 'work',
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('tasks.update', $task), ['category' => 'family'])
+            ->assertRedirect();
+
+        $this->assertSame('family', $task->fresh()->category);
+    }
+
+    public function test_category_can_be_cleared_from_the_edit_form(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user->currentWorkspace())->create(['created_by' => $user->id]);
+        $task = Task::factory()->for($project)->create([
+            'created_by' => $user->id,
+            'category' => 'work',
+        ]);
+
+        // A select posts an empty string for "None"; that has to mean null
+        // rather than failing the `in` rule.
+        $this->actingAs($user)
+            ->patch(route('tasks.update', $task), ['category' => ''])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($task->fresh()->category);
+    }
+
+    public function test_an_empty_repeat_selection_clears_the_rule(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user->currentWorkspace())->create(['created_by' => $user->id]);
+        $task = Task::factory()->for($project)->create([
+            'created_by' => $user->id,
+            'recurrence_rule' => 'weekly',
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('tasks.update', $task), ['recurrence_rule' => ''])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($task->fresh()->recurrence_rule);
+    }
+
     public function test_filtering_tasks_by_category(): void
     {
         $user = User::factory()->create();

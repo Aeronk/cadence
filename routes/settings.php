@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Integrations\IntegrationAccountController;
+use App\Http\Controllers\Settings\NotificationPreferencesController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Workspaces\WorkspaceController;
+use App\Http\Controllers\Workspaces\WorkspaceInvitationController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
@@ -30,14 +32,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/integrations', [IntegrationAccountController::class, 'index'])->name('integrations.index');
     Route::delete('settings/integrations/{account}', [IntegrationAccountController::class, 'destroy'])->name('integrations.destroy');
 
-    Route::get('settings/notifications', [\App\Http\Controllers\Settings\NotificationPreferencesController::class, 'edit'])->name('notifications.edit');
-    Route::patch('settings/notifications', [\App\Http\Controllers\Settings\NotificationPreferencesController::class, 'update'])->name('notifications.update');
+    Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('notifications.edit');
+    Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('notifications.update');
 
     Route::get('settings/workspace', [WorkspaceController::class, 'edit'])->name('workspace.edit');
     Route::patch('settings/workspace/{workspace}', [WorkspaceController::class, 'update'])->name('workspace.update');
     Route::delete('settings/workspace/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
     Route::post('settings/workspace/{workspace}/leave', [WorkspaceController::class, 'leave'])->name('workspace.leave');
-    Route::post('settings/workspace/{workspace}/members', [WorkspaceController::class, 'inviteMember'])->name('workspace.members.invite');
+    Route::post('settings/workspace/{workspace}/invitations', [WorkspaceInvitationController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('workspace.invitations.store');
+    Route::post('settings/workspace/{workspace}/invitations/{invitation}/resend', [WorkspaceInvitationController::class, 'resend'])
+        ->middleware('throttle:20,1')
+        ->name('workspace.invitations.resend');
+    Route::delete('settings/workspace/{workspace}/invitations/{invitation}', [WorkspaceInvitationController::class, 'destroy'])
+        ->name('workspace.invitations.destroy');
     Route::patch('settings/workspace/{workspace}/members/{member}', [WorkspaceController::class, 'updateMemberRole'])->name('workspace.members.update');
     Route::delete('settings/workspace/{workspace}/members/{member}', [WorkspaceController::class, 'removeMember'])->name('workspace.members.remove');
 });

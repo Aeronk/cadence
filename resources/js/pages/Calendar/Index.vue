@@ -7,13 +7,23 @@ import { Button } from '@/components/ui/button';
 
 type CalendarEvent = {
     id: string;
-    source: 'cadence' | 'external';
+    /**
+     * `cadence` is a meeting we own, `external` a synced provider event, `task` a
+     * task with a due date. The server guarantees these do not overlap: a meeting
+     * suppresses both its synced copy and the task it came from, so one
+     * commitment is one row.
+     */
+    source: 'cadence' | 'external' | 'task';
     title: string;
     starts_at: string;
     ends_at: string;
     url: string | null;
     meta: string | null;
     meeting_type: string | null;
+    all_day: boolean;
+    recurring: boolean;
+    task_id: number | null;
+    completed?: boolean;
 };
 
 type TravelDay = { date: string; trip_id: number; trip_name: string; destination: string | null };
@@ -96,8 +106,16 @@ const hours = Array.from({ length: 24 }, (_, i) => i);
 const eventsByDay = computed(() => {
     const map: Record<string, CalendarEvent[]> = {};
     for (const ev of props.events) {
+        if (!ev.starts_at) continue;
         const key = ev.starts_at.slice(0, 10);
         (map[key] ||= []).push(ev);
+    }
+    // All-day items first, then by start time, so a day reads top to bottom.
+    for (const key of Object.keys(map)) {
+        map[key].sort((a, b) => {
+            if (a.all_day !== b.all_day) return a.all_day ? -1 : 1;
+            return a.starts_at.localeCompare(b.starts_at);
+        });
     }
     return map;
 });
@@ -124,10 +142,17 @@ function eventSlot(ev: CalendarEvent) {
     };
 }
 
-const eventClass = (ev: CalendarEvent) =>
-    ev.source === 'cadence'
+const eventClass = (ev: CalendarEvent) => {
+    if (ev.source === 'task') {
+        return ev.completed
+            ? 'bg-muted border border-border text-muted-foreground line-through hover:bg-muted/80'
+            : 'bg-amber-100 border border-amber-300 text-amber-900 dark:bg-amber-900/40 dark:border-amber-700 dark:text-amber-200';
+    }
+
+    return ev.source === 'cadence'
         ? 'bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20'
         : 'bg-emerald-100 border border-emerald-300 text-emerald-800 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300';
+};
 </script>
 
 <template>
@@ -140,8 +165,19 @@ const eventClass = (ev: CalendarEvent) =>
                 <div>
                     <h1 class="text-2xl font-bold">{{ cursor_label }}</h1>
                     <p class="text-xs text-muted-foreground">
-                        Cadence meetings &amp; connected Google / Outlook events
+                        Meetings, tasks and connected Google / Outlook events
                     </p>
+                    <div class="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                        <span class="flex items-center gap-1.5">
+                            <span class="h-2 w-2 rounded-full bg-primary/60" /> Meetings
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="h-2 w-2 rounded-full bg-amber-400" /> Tasks
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="h-2 w-2 rounded-full bg-emerald-400" /> Connected calendar
+                        </span>
+                    </div>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">

@@ -93,6 +93,11 @@ class Workspace extends Model
             ->withTimestamps();
     }
 
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(WorkspaceInvitation::class);
+    }
+
     public function roleFor(User $user): ?WorkspaceRole
     {
         $row = $this->members()->where('users.id', $user->id)->first();

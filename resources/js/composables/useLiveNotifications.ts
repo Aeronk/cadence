@@ -16,7 +16,7 @@ export function useLiveNotifications() {
             const ch = e.private(`App.Models.User.${userId}`);
             const handler = () => {
                 unreadCount.value++;
-                router.reload({ only: ['auth', 'notifications'], preserveScroll: true, preserveState: true });
+                router.reload({ only: ['auth', 'notifications'] });
             };
             ch.notification(handler);
             cleanup = () => {

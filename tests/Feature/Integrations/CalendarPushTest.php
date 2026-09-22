@@ -52,7 +52,7 @@ class CalendarPushTest extends TestCase
         Bus::fake(); // suppress observer auto-dispatch so we control the job invocation
 
         Http::fake([
-            'googleapis.com/calendar/v3/calendars/primary/events' => Http::response([
+            'googleapis.com/calendar/v3/calendars/primary/events*' => Http::response([
                 'id' => 'gcal-event-1',
                 'etag' => '"v1"',
             ]),

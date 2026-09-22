@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Target, Plus, Trash2 } from 'lucide-vue-next';
+import { Link2, Target, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -27,9 +27,30 @@ type Goal = {
     progress: number;
     completed_at: string | null;
     milestones_count: number;
+    milestones: Milestone[];
 };
 
-const props = defineProps<{ goals: Goal[] }>();
+type Milestone = {
+    id: number;
+    title: string;
+    progress: number;
+    is_manual: boolean;
+    due_date: string | null;
+    completed_at: string | null;
+    project: { id: number; title: string; url: string } | null;
+};
+
+type LinkableMilestone = {
+    id: number;
+    title: string;
+    progress: number;
+    project_title: string | null;
+};
+
+const props = defineProps<{
+    goals: Goal[];
+    linkable_milestones: LinkableMilestone[];
+}>();
 
 const dialogOpen = ref(false);
 const form = useForm({
@@ -39,7 +60,8 @@ const form = useForm({
     description: '',
     horizon: 'year' as 'year' | 'quarter' | 'month',
     target_date: '',
-    progress: 0,
+    // No progress field: `progress` is a reserved useForm name (so it never
+    // actually worked), and a goal's progress is the average of its milestones.
 });
 
 function submit() {
@@ -60,6 +82,28 @@ function remove(g: Goal) {
 
 function setProgress(g: Goal, v: number) {
     router.patch(`/goals/${g.id}`, { progress: v }, { preserveScroll: true });
+}
+
+/* Linking a milestone to a goal is what makes the goal's progress roll up. */
+const linkOpen = ref(false);
+const linkForm = useForm({
+    goal_id: null as number | null,
+    milestone_id: null as number | null,
+});
+
+function linkMilestone() {
+    if (!linkForm.milestone_id) return;
+    router.patch(
+        `/milestones/${linkForm.milestone_id}`,
+        { goal_id: linkForm.goal_id },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                linkForm.reset();
+                linkOpen.value = false;
+            },
+        },
+    );
 }
 
 // Build a tree from flat list (parent_id chain)
@@ -97,6 +141,63 @@ const typeBadge = (t: string) => ({
                         Vision → Goal → Objective. Progress rolls up from milestones automatically.
                     </p>
                 </div>
+                <div class="flex gap-2">
+                <Dialog v-if="linkable_milestones.length && goals.length" v-model:open="linkOpen">
+                    <DialogTrigger as-child>
+                        <Button variant="outline">
+                            <Link2 class="mr-2 h-4 w-4" /> Link milestone
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Link a milestone to a goal</DialogTitle>
+                        </DialogHeader>
+                        <form class="space-y-4" @submit.prevent="linkMilestone">
+                            <p class="text-sm text-muted-foreground">
+                                A goal's progress is the average of the milestones under it,
+                                and each milestone tracks the tasks assigned to it.
+                            </p>
+                            <div>
+                                <Label for="link-goal">Goal</Label>
+                                <select
+                                    id="link-goal"
+                                    v-model="linkForm.goal_id"
+                                    required
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option :value="null" disabled>Choose a goal…</option>
+                                    <option v-for="g in goals" :key="g.id" :value="g.id">
+                                        {{ g.title }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <Label for="link-milestone">Milestone</Label>
+                                <select
+                                    id="link-milestone"
+                                    v-model="linkForm.milestone_id"
+                                    required
+                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    <option :value="null" disabled>Choose a milestone…</option>
+                                    <option
+                                        v-for="m in linkable_milestones"
+                                        :key="m.id"
+                                        :value="m.id"
+                                    >
+                                        {{ m.title }}<template v-if="m.project_title"> — {{ m.project_title }}</template>
+                                    </option>
+                                </select>
+                            </div>
+                            <DialogFooter>
+                                <Button type="submit" :disabled="!linkForm.milestone_id || !linkForm.goal_id">
+                                    Link
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
                 <Dialog v-model:open="dialogOpen">
                     <DialogTrigger as-child>
                         <Button>
@@ -163,6 +264,7 @@ const typeBadge = (t: string) => ({
                         </form>
                     </DialogContent>
                 </Dialog>
+                </div>
             </div>
 
             <div v-if="tree.length === 0" class="rounded-xl border border-dashed p-12 text-center">

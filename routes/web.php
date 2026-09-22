@@ -4,29 +4,38 @@ use App\Http\Controllers\Activity\ActivityLogController;
 use App\Http\Controllers\Analytics\AnalyticsController;
 use App\Http\Controllers\Briefing\BriefingController;
 use App\Http\Controllers\Calendar\CalendarController;
-use App\Http\Controllers\Meetings\ExtractActionItemsController;
 use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Comments\CommentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Goals\GoalController;
 use App\Http\Controllers\Integrations\OAuthController;
 use App\Http\Controllers\Integrations\WebhookController;
+use App\Http\Controllers\Meetings\ExtractActionItemsController;
 use App\Http\Controllers\Meetings\MeetingController;
 use App\Http\Controllers\Milestones\MilestoneController;
-use App\Http\Controllers\Projects\ProjectArchiveController;
-use App\Http\Controllers\Projects\ProjectFileController;
 use App\Http\Controllers\Notes\NoteController;
 use App\Http\Controllers\Notifications\NotificationController;
-use App\Http\Controllers\Reminders\ReminderController;
+use App\Http\Controllers\OnboardingController;
+use App\Http\Controllers\PersonalEvents\PersonalEventController;
+use App\Http\Controllers\Projects\ProjectArchiveController;
 use App\Http\Controllers\Projects\ProjectController;
+use App\Http\Controllers\Projects\ProjectFileController;
+use App\Http\Controllers\Reminders\ReminderController;
 use App\Http\Controllers\Tasks\TaskController;
+use App\Http\Controllers\Tasks\TaskScheduleController;
 use App\Http\Controllers\Todos\TodoController;
 use App\Http\Controllers\Trips\TripController;
-use App\Http\Controllers\Goals\GoalController;
-use App\Http\Controllers\PersonalEvents\PersonalEventController;
 use App\Http\Controllers\Workspaces\SwitchWorkspaceController;
+use App\Http\Controllers\Workspaces\WorkspaceInvitationController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
+
+// Invitation landing page. Public: the token is the credential, and the invitee
+// may not have an account yet.
+Route::get('invitations/{token}', [WorkspaceInvitationController::class, 'show'])
+    ->middleware('throttle:30,1')
+    ->name('workspace.invitations.accept');
 Route::view('offline', 'offline')->name('offline');
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -37,6 +46,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::resource('projects', ProjectController::class);
     Route::resource('tasks', TaskController::class);
+    // Putting a task on the calendar promotes it to a meeting; the task itself is
+    // never drawn twice.
+    Route::post('tasks/{task}/schedule', [TaskScheduleController::class, 'store'])->name('tasks.schedule.store');
+    Route::delete('tasks/{task}/schedule', [TaskScheduleController::class, 'destroy'])->name('tasks.schedule.destroy');
     Route::resource('todos', TodoController::class)->except(['show', 'create', 'edit']);
     Route::resource('notes', NoteController::class)->except(['show', 'create', 'edit']);
     Route::resource('clients', ClientController::class)->except(['show', 'create', 'edit']);
@@ -83,8 +96,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
     Route::get('analytics', AnalyticsController::class)->name('analytics.index');
 
-    Route::post('onboarding/complete', [\App\Http\Controllers\OnboardingController::class, 'complete'])->name('onboarding.complete');
-    Route::post('onboarding/reset', [\App\Http\Controllers\OnboardingController::class, 'reset'])->name('onboarding.reset');
+    Route::post('onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
+    Route::post('onboarding/reset', [OnboardingController::class, 'reset'])->name('onboarding.reset');
 
     Route::get('briefing', [BriefingController::class, 'index'])->name('briefing.index');
     Route::post('briefing/regenerate', [BriefingController::class, 'regenerate'])->name('briefing.regenerate');
@@ -108,6 +121,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // Inbound webhooks — public, signature-verified inside the controller.
 Route::post('integrations/gmail/webhook', [WebhookController::class, 'gmail'])
     ->name('integrations.webhooks.gmail');
+Route::post('integrations/google-calendar/webhook', [WebhookController::class, 'googleCalendar'])
+    ->name('integrations.webhooks.google-calendar');
 Route::match(['get', 'post'], 'integrations/microsoft/webhook', [WebhookController::class, 'microsoft'])
     ->name('integrations.webhooks.microsoft');
 Route::post('integrations/twilio/webhook', [WebhookController::class, 'twilio'])

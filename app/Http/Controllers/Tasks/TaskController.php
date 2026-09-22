@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tasks;
 
+use App\Enums\Category;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
@@ -17,6 +18,18 @@ use Inertia\Response;
 
 class TaskController extends Controller
 {
+    /**
+     * Repeat rules a task understands. Kept beside the controller so the edit
+     * dialog and Task::nextOccurrenceDate cannot drift apart.
+     */
+    public const RECURRENCE_OPTIONS = [
+        ['value' => '', 'label' => 'Does not repeat'],
+        ['value' => 'daily', 'label' => 'Daily'],
+        ['value' => 'weekly', 'label' => 'Weekly'],
+        ['value' => 'monthly', 'label' => 'Monthly'],
+        ['value' => 'yearly', 'label' => 'Yearly'],
+    ];
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Task::class);
@@ -52,7 +65,7 @@ class TaskController extends Controller
                 'project_id' => $request->integer('project_id') ?: null,
                 'category' => $request->string('category')->toString() ?: null,
             ],
-            'categories' => \App\Enums\Category::options(),
+            'categories' => Category::options(),
             'statuses' => $workspace->statuses()->orderBy('position')->get(['id', 'name', 'color']),
             'priorities' => $workspace->priorities()->orderBy('level')->get(['id', 'name', 'color', 'level']),
             'projects_for_select' => Project::query()
@@ -72,13 +85,27 @@ class TaskController extends Controller
     {
         $this->authorize('view', $task);
 
+        $workspace = $task->workspace;
+
         return Inertia::render('Tasks/Show', [
-            'task' => $task->load(['status', 'priority', 'creator', 'assignees', 'tags', 'subtasks', 'milestone']),
+            'task' => $task->load([
+                'status', 'priority', 'creator', 'assignees', 'tags', 'subtasks',
+                'milestone', 'meeting.attendees:id,name,email',
+            ]),
             'comments' => $task->comments()->with('user:id,name')->whereNull('parent_id')->latest()->get(),
             'milestones_for_select' => $task->project
                 ? $task->project->milestones()->get(['id', 'title'])
                 : [],
-            'categories' => \App\Enums\Category::options(),
+            'categories' => Category::options(),
+            // The edit dialog needs the same option sets the index page has, plus
+            // the people who can be assigned or invited.
+            'statuses' => $workspace->statuses()->orderBy('position')->get(['id', 'name', 'color']),
+            'priorities' => $workspace->priorities()->orderBy('level')->get(['id', 'name', 'color', 'level']),
+            'assignable_users' => $workspace->members()
+                ->orderBy('users.name')
+                ->get(['users.id', 'users.name', 'users.email'])
+                ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
+            'recurrence_options' => self::RECURRENCE_OPTIONS,
         ]);
     }
 

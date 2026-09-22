@@ -4,6 +4,7 @@ use App\Console\Commands\GenerateDailyBriefings;
 use App\Console\Commands\GenerateRecurringOccurrences;
 use App\Console\Commands\SendDueReminders;
 use App\Console\Commands\SendMeetingReminders;
+use App\Console\Commands\SyncCalendars;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -33,3 +34,11 @@ Schedule::command(SendDueReminders::class)
 Schedule::command(GenerateDailyBriefings::class)
     ->dailyAt('06:30')
     ->withoutOverlapping();
+
+// Calendar sync — the pull half of two-way sync. Push notifications are optional
+// (they need a verified HTTPS domain), so polling is what guarantees events show
+// up at all.
+Schedule::command(SyncCalendars::class)
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

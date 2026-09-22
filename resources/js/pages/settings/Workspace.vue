@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Crown, Trash2, UserPlus, LogOut } from 'lucide-vue-next';
+import { Crown, Eye, MailPlus, Send, Trash2, UserPlus, LogOut } from 'lucide-vue-next';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,24 @@ type Member = {
     is_owner: boolean;
 };
 
+type Invitation = {
+    id: number;
+    email: string;
+    role: string;
+    invited_by: string | null;
+    expires_at: string;
+    last_sent_at: string | null;
+    send_count: number;
+    can_resend: boolean;
+};
+
+const ROLE_LABELS: Record<string, string> = {
+    owner: 'Owner',
+    admin: 'Admin',
+    member: 'Member',
+    viewer: 'Viewer',
+};
+
 const props = defineProps<{
     workspace: {
         id: number;
@@ -26,6 +44,7 @@ const props = defineProps<{
         owner_id: number;
     };
     members: Member[];
+    invitations: Invitation[];
     viewer_role: string;
     roles: string[];
 }>();
@@ -50,9 +69,35 @@ function saveDetails() {
 }
 
 function invite() {
-    inviteForm.post(workspaceRoutes.members.invite(props.workspace.id).url, {
+    // Sends an email carrying a tokenised link. The person joins when they
+    // accept it, rather than being added silently.
+    inviteForm.post(`/settings/workspace/${props.workspace.id}/invitations`, {
         preserveScroll: true,
         onSuccess: () => inviteForm.reset('email'),
+    });
+}
+
+function resendInvitation(invitation: Invitation) {
+    router.post(
+        `/settings/workspace/${props.workspace.id}/invitations/${invitation.id}/resend`,
+        {},
+        { preserveScroll: true },
+    );
+}
+
+function revokeInvitation(invitation: Invitation) {
+    if (!confirm(`Revoke the invitation to ${invitation.email}?`)) return;
+    router.delete(
+        `/settings/workspace/${props.workspace.id}/invitations/${invitation.id}`,
+        { preserveScroll: true },
+    );
+}
+
+function formatDate(iso: string): string {
+    return new Date(iso).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
     });
 }
 
@@ -132,7 +177,8 @@ function leaveWorkspace() {
                     <div>
                         <h2 class="text-lg font-semibold">Members ({{ members.length }})</h2>
                         <p class="text-sm text-muted-foreground">
-                            Owners and admins can manage everyone.
+                            Owners and admins can manage everyone. Viewers can see the
+                            workspace but cannot change anything in it.
                         </p>
                     </div>
                 </header>
@@ -154,6 +200,7 @@ function leaveWorkspace() {
                     >
                         <option value="member">Member</option>
                         <option value="admin">Admin</option>
+                        <option value="viewer">Viewer (read-only)</option>
                     </select>
                     <Button type="submit" :disabled="inviteForm.processing">
                         <UserPlus class="mr-2 h-4 w-4" /> Invite
@@ -185,6 +232,13 @@ function leaveWorkspace() {
                                 </p>
                                 <p class="text-xs text-muted-foreground">{{ member.email }}</p>
                             </div>
+                            <span
+                                v-if="member.role === 'viewer'"
+                                class="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                                title="Read-only: can see this workspace but not change anything in it"
+                            >
+                                <Eye class="h-3 w-3" /> Read-only
+                            </span>
                         </div>
 
                         <div class="flex items-center gap-2">
@@ -196,6 +250,7 @@ function leaveWorkspace() {
                             >
                                 <option value="member">Member</option>
                                 <option value="admin">Admin</option>
+                                <option value="viewer">Viewer</option>
                             </select>
                             <span v-else class="text-xs text-muted-foreground capitalize">
                                 {{ member.role }}
@@ -206,6 +261,62 @@ function leaveWorkspace() {
                                 title="Remove"
                                 @click="remove(member)"
                             >
+                                <Trash2 class="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pending invitations -->
+            <section v-if="canManage && invitations.length">
+                <header class="mb-4">
+                    <h2 class="text-lg font-semibold">
+                        Pending invitations ({{ invitations.length }})
+                    </h2>
+                    <p class="text-sm text-muted-foreground">
+                        These people have been emailed a link but have not joined yet.
+                        Resending sends a fresh link and invalidates the old one.
+                    </p>
+                </header>
+
+                <div class="overflow-hidden rounded-lg border">
+                    <div
+                        v-for="invitation in invitations"
+                        :key="invitation.id"
+                        class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0"
+                    >
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="grid h-9 w-9 place-items-center rounded-full bg-muted text-muted-foreground"
+                            >
+                                <MailPlus class="h-4 w-4" />
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium">{{ invitation.email }}</p>
+                                <p class="text-xs text-muted-foreground">
+                                    {{ ROLE_LABELS[invitation.role] ?? invitation.role }}
+                                    &middot; expires {{ formatDate(invitation.expires_at) }}
+                                    <template v-if="invitation.send_count > 1">
+                                        &middot; sent {{ invitation.send_count }} times
+                                    </template>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                :disabled="!invitation.can_resend"
+                                :title="invitation.can_resend
+                                    ? 'Send this invitation again'
+                                    : 'Just sent \u2014 try again in a moment'"
+                                @click="resendInvitation(invitation)"
+                            >
+                                <Send class="mr-1.5 h-3.5 w-3.5" /> Resend
+                            </Button>
+                            <button title="Revoke" @click="revokeInvitation(invitation)">
                                 <Trash2 class="h-4 w-4 text-muted-foreground hover:text-foreground" />
                             </button>
                         </div>

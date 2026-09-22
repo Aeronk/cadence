@@ -28,7 +28,10 @@ class MilestoneFactory extends Factory
             'title' => fake()->catchPhrase(),
             'description' => fake()->optional()->paragraph(),
             'due_date' => fake()->optional()->dateTimeBetween('+1 week', '+3 months'),
-            'progress' => fake()->numberBetween(0, 100),
+            // A new milestone tracks its tasks, so it starts empty rather than at
+            // an arbitrary percentage. Pass `manual_progress` to pin a figure.
+            'progress' => 0,
+            'manual_progress' => null,
             'position' => 0,
         ];
     }
@@ -37,6 +40,7 @@ class MilestoneFactory extends Factory
     {
         return $this->state(fn () => [
             'progress' => 100,
+            'manual_progress' => 100,
             'completed_at' => now(),
         ]);
     }

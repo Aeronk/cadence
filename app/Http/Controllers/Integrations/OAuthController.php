@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Integrations;
 use App\Enums\IntegrationProvider;
 use App\Http\Controllers\Controller;
 use App\Integrations\IntegrationManager;
+use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Jobs\SyncIntegrationAccountInbox;
 use App\Models\IntegrationAccount;
 use Illuminate\Http\RedirectResponse;
@@ -78,6 +79,9 @@ class OAuthController extends Controller
         );
 
         SyncIntegrationAccountInbox::dispatch($account->id)->afterResponse();
+        // Both providers carry a calendar scope, so a fresh connection should
+        // populate the calendar too rather than waiting for the next poll.
+        SyncIntegrationAccountCalendar::dispatch($account->id)->afterResponse();
 
         return redirect()->route('integrations.index')
             ->with('flash.success', $providerEnum->label().' connected.');

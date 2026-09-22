@@ -36,4 +36,21 @@ class UpdateTaskRequest extends FormRequest
             'tag_ids.*' => [Rule::exists('tags', 'id')->where('workspace_id', $workspaceId)],
         ];
     }
+
+    /**
+     * Select inputs post an empty string for "none". Treat those as null so the
+     * nullable rules below accept them instead of failing an `in` check.
+     */
+    protected function prepareForValidation(): void
+    {
+        $nullable = [
+            'status_id', 'priority_id', 'milestone_id', 'category',
+            'recurrence_rule', 'recurrence_ends_on', 'start_date', 'due_date',
+        ];
+
+        $this->merge(collect($this->only($nullable))
+            ->filter(fn ($value) => $value === '')
+            ->map(fn () => null)
+            ->all());
+    }
 }

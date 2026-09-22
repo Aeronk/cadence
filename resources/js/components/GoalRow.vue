@@ -1,6 +1,17 @@
 <script setup lang="ts">
-import { Trash2 } from 'lucide-vue-next';
+import { ChevronDown, ChevronRight, Flag, Lock, Trash2 } from 'lucide-vue-next';
+import { ref } from 'vue';
 import GoalRow from './GoalRow.vue';
+
+type Milestone = {
+    id: number;
+    title: string;
+    progress: number;
+    is_manual: boolean;
+    due_date: string | null;
+    completed_at: string | null;
+    project: { id: number; title: string; url: string } | null;
+};
 
 type Node = {
     id: number;
@@ -13,10 +24,15 @@ type Node = {
     progress: number;
     completed_at: string | null;
     milestones_count: number;
+    milestones: Milestone[];
     children: Node[];
 };
 
 defineProps<{ node: Node; depth: number }>();
+
+// Milestones are collapsed by default so a long tree stays readable; opening one
+// is how you see what the goal's percentage is actually made of.
+const showMilestones = ref(false);
 const emit = defineEmits<{
     (e: 'remove', node: Node): void;
     (e: 'progress', node: Node, value: number): void;
@@ -44,6 +60,18 @@ const typeBadge = (t: string) => ({
                     {{ node.horizon }} · target {{ node.target_date }}
                 </p>
             </div>
+            <button
+                v-if="node.milestones_count > 0"
+                class="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                :title="`${node.milestones_count} milestone(s)`"
+                @click="showMilestones = !showMilestones"
+            >
+                <ChevronDown v-if="showMilestones" class="h-3.5 w-3.5" />
+                <ChevronRight v-else class="h-3.5 w-3.5" />
+                <Flag class="h-3 w-3" />
+                {{ node.milestones_count }}
+            </button>
+
             <div class="flex items-center gap-2">
                 <div class="hidden w-32 sm:block">
                     <div class="h-1.5 overflow-hidden rounded-full bg-muted">
@@ -60,6 +88,50 @@ const typeBadge = (t: string) => ({
                 >
                     <Trash2 class="h-4 w-4 text-muted-foreground hover:text-foreground" />
                 </button>
+            </div>
+        </div>
+
+        <!-- What the percentage is made of. -->
+        <div
+            v-if="showMilestones && node.milestones.length"
+            class="space-y-2 border-t border-dashed bg-muted/30 px-3 py-3"
+            :style="{ paddingLeft: `${1.75 + depth * 1.25}rem` }"
+        >
+            <div
+                v-for="m in node.milestones"
+                :key="m.id"
+                class="flex items-center gap-3"
+            >
+                <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-medium">
+                        <span :class="{ 'line-through text-muted-foreground': m.completed_at }">
+                            {{ m.title }}
+                        </span>
+                        <Lock
+                            v-if="m.is_manual"
+                            class="ml-1 inline h-2.5 w-2.5 text-muted-foreground"
+                            title="Progress set by hand rather than counted from tasks"
+                        />
+                    </p>
+                    <p class="text-[11px] text-muted-foreground">
+                        <a
+                            v-if="m.project"
+                            :href="m.project.url"
+                            class="hover:underline"
+                        >{{ m.project.title }}</a>
+                        <template v-if="m.due_date">
+                            <span v-if="m.project"> &middot; </span>due {{ m.due_date }}
+                        </template>
+                    </p>
+                </div>
+                <div class="hidden w-24 sm:block">
+                    <div class="h-1 overflow-hidden rounded-full bg-muted">
+                        <div class="h-full bg-primary/70" :style="{ width: `${m.progress}%` }" />
+                    </div>
+                </div>
+                <span class="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+                    {{ m.progress }}%
+                </span>
             </div>
         </div>
 

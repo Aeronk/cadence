@@ -5,7 +5,9 @@ namespace Tests\Feature\Workspaces;
 use App\Enums\WorkspaceRole;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Notifications\WorkspaceInvited;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class WorkspaceSettingsTest extends TestCase
@@ -37,22 +39,31 @@ class WorkspaceSettingsTest extends TestCase
 
     public function test_admin_can_invite_a_new_user_by_email(): void
     {
+        Notification::fake();
+
         $owner = User::factory()->create();
         $workspace = Workspace::factory()->create(['owner_id' => $owner->id]);
         $admin = User::factory()->create();
         $workspace->members()->attach($admin, ['role' => WorkspaceRole::Admin->value]);
 
         $this->actingAs($admin)
-            ->post(route('workspace.members.invite', $workspace), [
+            ->post(route('workspace.invitations.store', $workspace), [
                 'email' => 'newhire@example.com',
                 'role' => 'member',
             ])
             ->assertRedirect();
 
-        $invited = User::firstWhere('email', 'newhire@example.com');
-        $this->assertNotNull($invited);
-        $this->assertTrue($workspace->hasMember($invited));
-        $this->assertSame(WorkspaceRole::Member, $workspace->roleFor($invited));
+        // An invitation is pending and the address is emailed a link. They are
+        // not a member until they accept, and no account is created for them.
+        $this->assertDatabaseHas('workspace_invitations', [
+            'workspace_id' => $workspace->id,
+            'email' => 'newhire@example.com',
+            'role' => 'member',
+            'accepted_at' => null,
+        ]);
+        $this->assertNull(User::firstWhere('email', 'newhire@example.com'));
+
+        Notification::assertSentOnDemand(WorkspaceInvited::class);
     }
 
     public function test_inviting_existing_member_returns_error_flash(): void
@@ -64,7 +75,7 @@ class WorkspaceSettingsTest extends TestCase
 
         $this->actingAs($owner)
             ->from(route('workspace.edit'))
-            ->post(route('workspace.members.invite', $workspace), [
+            ->post(route('workspace.invitations.store', $workspace), [
                 'email' => 'existing@example.com',
                 'role' => 'member',
             ])

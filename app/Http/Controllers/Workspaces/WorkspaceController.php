@@ -6,10 +6,9 @@ use App\Enums\WorkspaceRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Models\WorkspaceInvitation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -44,8 +43,9 @@ class WorkspaceController extends Controller
                 'owner_id' => $workspace->owner_id,
             ],
             'members' => $members,
+            'invitations' => $this->pendingInvitations($workspace),
             'viewer_role' => $workspace->roleFor($request->user())?->value,
-            'roles' => collect(WorkspaceRole::cases())->map(fn ($r) => $r->value),
+            'roles' => WorkspaceRole::invitableValues(),
         ]);
     }
 
@@ -72,35 +72,6 @@ class WorkspaceController extends Controller
         return redirect()->route('dashboard')->with('flash.success', 'Workspace deleted.');
     }
 
-    public function inviteMember(Request $request, Workspace $workspace): RedirectResponse
-    {
-        $this->authorize('inviteMember', $workspace);
-
-        $data = $request->validate([
-            'email' => ['required', 'email', 'max:255'],
-            'role' => ['required', Rule::in([WorkspaceRole::Admin->value, WorkspaceRole::Member->value])],
-        ]);
-
-        $user = User::firstOrCreate(
-            ['email' => $data['email']],
-            [
-                'name' => Str::before($data['email'], '@'),
-                'password' => Hash::make(Str::random(40)),
-            ],
-        );
-
-        if ($workspace->hasMember($user)) {
-            return back()->with('flash.error', 'That user is already a member.');
-        }
-
-        $workspace->members()->attach($user->id, [
-            'role' => $data['role'],
-            'joined_at' => now(),
-        ]);
-
-        return back()->with('flash.success', 'Member invited.');
-    }
-
     public function updateMemberRole(Request $request, Workspace $workspace, User $member): RedirectResponse
     {
         $this->authorize('inviteMember', $workspace);
@@ -110,7 +81,7 @@ class WorkspaceController extends Controller
         }
 
         $data = $request->validate([
-            'role' => ['required', Rule::in([WorkspaceRole::Admin->value, WorkspaceRole::Member->value])],
+            'role' => ['required', Rule::in(WorkspaceRole::invitableValues())],
         ]);
 
         $workspace->members()->updateExistingPivot($member->id, ['role' => $data['role']]);
@@ -138,5 +109,31 @@ class WorkspaceController extends Controller
         $workspace->members()->detach($request->user()->id);
 
         return redirect()->route('dashboard')->with('flash.success', 'Left the workspace.');
+    }
+
+    /**
+     * Invitations still awaiting a reply, newest first, with whether the resend
+     * cooldown has elapsed so the button can be disabled rather than failing.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function pendingInvitations(Workspace $workspace): array
+    {
+        return $workspace->invitations()
+            ->pending()
+            ->with('invitedBy:id,name')
+            ->latest()
+            ->get()
+            ->map(fn (WorkspaceInvitation $invitation) => [
+                'id' => $invitation->id,
+                'email' => $invitation->email,
+                'role' => $invitation->role->value,
+                'invited_by' => $invitation->invitedBy?->name,
+                'expires_at' => $invitation->expires_at->toIso8601String(),
+                'last_sent_at' => $invitation->last_sent_at?->toIso8601String(),
+                'send_count' => $invitation->send_count,
+                'can_resend' => $invitation->canBeResent(),
+            ])
+            ->all();
     }
 }

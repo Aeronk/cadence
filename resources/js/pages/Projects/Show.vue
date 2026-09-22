@@ -80,10 +80,16 @@ type Milestone = {
     title: string;
     description: string | null;
     due_date: string | null;
+    /** The effective percentage: pinned if manual, otherwise counted from tasks. */
     progress: number;
+    manual_progress: number | null;
+    is_manual: boolean;
+    tasks_count: number;
+    completed_tasks_count: number;
     completed_at: string | null;
     position: number;
     creator: { id: number; name: string } | null;
+    goal: { id: number; title: string } | null;
 };
 type ProjectFile = {
     id: number;
@@ -208,15 +214,15 @@ const milestoneForm = useForm({
     title: '',
     description: '',
     due_date: '',
-    progress: 0,
 });
 
 function addMilestone() {
+    // No progress field: a new milestone starts tracking its tasks, and the bar
+    // fills as they are completed.
     milestoneForm.post(milestonesRoutes.store().url, {
         preserveScroll: true,
         onSuccess: () => {
             milestoneForm.reset('title', 'description', 'due_date');
-            milestoneForm.progress = 0;
             milestoneOpen.value = false;
         },
     });
@@ -230,10 +236,20 @@ function toggleMilestone(m: Milestone) {
     );
 }
 
+/** Pin progress to a hand-entered number. */
 function updateMilestoneProgress(m: Milestone, value: number) {
     router.patch(
         milestonesRoutes.update(m.id).url,
-        { progress: value },
+        { manual_progress: value },
+        { preserveScroll: true },
+    );
+}
+
+/** Hand progress back to the task count. */
+function trackMilestoneFromTasks(m: Milestone) {
+    router.patch(
+        milestonesRoutes.update(m.id).url,
+        { manual_progress: null },
         { preserveScroll: true },
     );
 }
@@ -580,23 +596,14 @@ function deleteMilestone(m: Milestone) {
                                 <Label>Description</Label>
                                 <RichEditor v-model="milestoneForm.description" placeholder="Definition of done…" />
                             </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <Label for="m-due">Due date</Label>
-                                    <Input id="m-due" v-model="milestoneForm.due_date" type="date" />
-                                </div>
-                                <div>
-                                    <Label for="m-progress">Progress ({{ milestoneForm.progress }}%)</Label>
-                                    <input
-                                        id="m-progress"
-                                        v-model.number="milestoneForm.progress"
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        class="mt-2 w-full"
-                                    />
-                                </div>
+                            <div>
+                                <Label for="m-due">Due date</Label>
+                                <Input id="m-due" v-model="milestoneForm.due_date" type="date" />
                             </div>
+                            <p class="text-xs text-muted-foreground">
+                                Progress is counted from the tasks assigned to this milestone.
+                                You can override it by hand afterwards.
+                            </p>
                             <DialogFooter>
                                 <Button type="submit" :disabled="milestoneForm.processing">Add</Button>
                             </DialogFooter>
@@ -660,6 +667,23 @@ function deleteMilestone(m: Milestone) {
                                 @change="(e) => updateMilestoneProgress(m, Number((e.target as HTMLInputElement).value))"
                             />
                             <span class="text-xs font-medium tabular-nums">{{ m.progress }}%</span>
+                        </div>
+
+                        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            <span v-if="m.is_manual" class="flex items-center gap-1">
+                                Set by hand
+                                <button class="underline hover:text-foreground" @click="trackMilestoneFromTasks(m)">
+                                    track tasks instead
+                                </button>
+                            </span>
+                            <span v-else>
+                                {{ m.completed_tasks_count }} of {{ m.tasks_count }}
+                                task{{ m.tasks_count === 1 ? '' : 's' }} done
+                            </span>
+                            <span v-if="m.goal" class="flex items-center gap-1">
+                                &middot; rolls up to
+                                <a href="/goals" class="underline hover:text-foreground">{{ m.goal.title }}</a>
+                            </span>
                         </div>
                     </div>
                 </div>

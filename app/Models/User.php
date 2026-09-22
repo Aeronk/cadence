@@ -42,6 +42,7 @@ class User extends Authenticatable implements PasskeyUser
         'meeting_invited' => 'Meeting invitations',
         'meeting_reminder' => 'Meeting reminders',
         'task_assigned' => 'Task assignments',
+        'workspace_invited' => 'Workspace invitations',
         'reminder' => 'Scheduled reminders',
         'test' => 'Test notifications',
     ];
@@ -58,6 +59,7 @@ class User extends Authenticatable implements PasskeyUser
         if (! isset($prefs[$kind][$channel])) {
             return true;
         }
+
         return (bool) $prefs[$kind][$channel];
     }
 

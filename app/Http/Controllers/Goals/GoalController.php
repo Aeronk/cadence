@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Goals;
 
 use App\Http\Controllers\Controller;
 use App\Models\Goal;
+use App\Models\Milestone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,10 @@ class GoalController extends Controller
         $goals = Goal::query()
             ->forWorkspace($workspace)
             ->where('user_id', $user->id)
-            ->with(['children.children', 'milestones:id,goal_id,progress'])
+            ->with([
+                'children.children',
+                'milestones' => fn ($q) => $q->with('project:id,title')->orderBy('due_date'),
+            ])
             ->orderBy('title')
             ->get();
 
@@ -39,10 +43,42 @@ class GoalController extends Controller
                 'progress' => $g->computedProgress(),
                 'completed_at' => $g->completed_at?->toIso8601String(),
                 'milestones_count' => $g->milestones->count(),
+                // Shown under the goal so progress is traceable to the work
+                // behind it rather than being an unexplained percentage.
+                'milestones' => $g->milestones->map(fn (Milestone $m) => [
+                    'id' => $m->id,
+                    'title' => $m->title,
+                    'progress' => (int) $m->progress,
+                    'is_manual' => $m->tracksProgressManually(),
+                    'due_date' => $m->due_date?->toDateString(),
+                    'completed_at' => $m->completed_at?->toIso8601String(),
+                    'project' => $m->project ? [
+                        'id' => $m->project->id,
+                        'title' => $m->project->title,
+                        'url' => route('projects.show', $m->project->id),
+                    ] : null,
+                ])->values(),
             ];
         });
 
-        return Inertia::render('Goals/Index', ['goals' => $payload]);
+        return Inertia::render('Goals/Index', [
+            'goals' => $payload,
+            // Milestones in this workspace that are not yet attached to a goal,
+            // so one can be linked without leaving the page.
+            'linkable_milestones' => Milestone::query()
+                ->forWorkspace($workspace)
+                ->whereNull('goal_id')
+                ->with('project:id,title')
+                ->orderBy('title')
+                ->get(['id', 'title', 'project_id', 'progress'])
+                ->map(fn (Milestone $m) => [
+                    'id' => $m->id,
+                    'title' => $m->title,
+                    'progress' => (int) $m->progress,
+                    'project_title' => $m->project?->title,
+                ])
+                ->values(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -83,7 +119,9 @@ class GoalController extends Controller
 
         if (array_key_exists('completed', $data)) {
             $goal->completed_at = $data['completed'] ? now() : null;
-            if ($data['completed']) $goal->progress = 100;
+            if ($data['completed']) {
+                $goal->progress = 100;
+            }
             unset($data['completed']);
         }
 

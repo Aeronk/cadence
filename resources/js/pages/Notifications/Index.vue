@@ -33,7 +33,7 @@ function markRead(n: AppNotification) {
 }
 
 function markAll() {
-    router.post(notificationsRoutes['read-all']().url, {}, { preserveScroll: true });
+    router.post(notificationsRoutes.readAll().url, {}, { preserveScroll: true });
 }
 
 function sendTest() {

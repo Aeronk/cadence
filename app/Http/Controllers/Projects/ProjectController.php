@@ -58,8 +58,31 @@ class ProjectController extends Controller
                 ->orderBy('level')
                 ->get(['id', 'name', 'color', 'level']),
             'milestones' => $project->milestones()
-                ->with('creator:id,name')
-                ->get(['id', 'title', 'description', 'due_date', 'progress', 'completed_at', 'position', 'created_by']),
+                ->with(['creator:id,name', 'goal:id,title'])
+                ->withCount([
+                    'tasks',
+                    'tasks as completed_tasks_count' => fn ($q) => $q->whereNotNull('completed_at'),
+                ])
+                ->get([
+                    'id', 'title', 'description', 'due_date', 'progress', 'manual_progress',
+                    'completed_at', 'position', 'created_by', 'goal_id',
+                ])
+                ->map(fn ($m) => [
+                    'id' => $m->id,
+                    'title' => $m->title,
+                    'description' => $m->description,
+                    'due_date' => $m->due_date?->toDateString(),
+                    'progress' => (int) $m->progress,
+                    // Null means progress is counted from the milestone's tasks.
+                    'manual_progress' => $m->manual_progress,
+                    'is_manual' => $m->tracksProgressManually(),
+                    'tasks_count' => $m->tasks_count,
+                    'completed_tasks_count' => $m->completed_tasks_count,
+                    'completed_at' => $m->completed_at?->toIso8601String(),
+                    'position' => $m->position,
+                    'creator' => $m->creator ? ['id' => $m->creator->id, 'name' => $m->creator->name] : null,
+                    'goal' => $m->goal ? ['id' => $m->goal->id, 'title' => $m->goal->title] : null,
+                ]),
             'files' => $project->files()
                 ->with('uploader:id,name')
                 ->get(['id', 'original_name', 'mime_type', 'size_bytes', 'created_at', 'uploaded_by', 'project_id']),

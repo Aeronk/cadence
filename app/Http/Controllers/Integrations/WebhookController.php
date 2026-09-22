@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Integrations;
 use App\Enums\IntegrationProvider;
 use App\Http\Controllers\Controller;
 use App\Integrations\IntegrationManager;
+use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Jobs\SyncIntegrationAccountInbox;
 use App\Models\IntegrationAccount;
 use App\Models\Message;
@@ -82,6 +83,49 @@ class WebhookController extends Controller
             if ($accountId > 0) {
                 SyncIntegrationAccountInbox::dispatch($accountId);
             }
+        }
+
+        $delivery->forceFill(['processed_at' => now()])->save();
+
+        return response('OK');
+    }
+
+    /**
+     * Google Calendar push notification.
+     *
+     * The body is empty; everything arrives in headers. `X-Goog-Channel-Token` is
+     * the value handed to events/watch, which is how the account is identified.
+     * The first notification after subscribing is a `sync` handshake and carries
+     * no change, so it is acknowledged without work.
+     */
+    public function googleCalendar(Request $request): SymfonyResponse
+    {
+        $state = (string) $request->header('X-Goog-Resource-State', '');
+        $token = (string) $request->header('X-Goog-Channel-Token', '');
+        $channelId = (string) $request->header('X-Goog-Channel-Id', '');
+
+        $accountId = str_starts_with($token, 'account=')
+            ? (int) substr($token, 8)
+            : 0;
+
+        $delivery = WebhookDelivery::create([
+            'provider' => IntegrationProvider::Gmail->value,
+            'event_type' => 'google.calendar.'.($state ?: 'unknown'),
+            'external_id' => $channelId ?: null,
+            'headers' => $request->headers->all(),
+            'payload' => $request->all(),
+            // The channel token is the shared secret; an unknown one is rejected.
+            'signature_verified' => $accountId > 0,
+        ]);
+
+        if ($accountId <= 0) {
+            $delivery->forceFill(['error' => 'Unrecognised channel token.'])->save();
+
+            return response('Forbidden', 403);
+        }
+
+        if ($state !== 'sync') {
+            SyncIntegrationAccountCalendar::dispatch($accountId);
         }
 
         $delivery->forceFill(['processed_at' => now()])->save();

@@ -21,13 +21,15 @@ class MilestoneCrudTest extends TestCase
             'project_id' => $project->id,
             'title' => 'Beta launch',
             'due_date' => now()->addMonth()->toDateString(),
-            'progress' => 25,
+            'manual_progress' => 25,
         ])->assertRedirect();
 
         $this->assertDatabaseHas('milestones', [
             'project_id' => $project->id,
             'workspace_id' => $project->workspace_id,
             'title' => 'Beta launch',
+            'manual_progress' => 25,
+            // Cached effective value, which a manual figure pins.
             'progress' => 25,
         ]);
     }

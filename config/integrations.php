@@ -14,6 +14,12 @@ return [
             'https://www.googleapis.com/auth/calendar',
         ],
         'pubsub_topic' => env('GOOGLE_PUBSUB_TOPIC'),
+
+        // Calendar push notifications require an HTTPS callback on a domain
+        // Google has verified. Off by default; scheduled polling covers the
+        // gap, so leaving this unset only costs sync latency.
+        'calendar_push_enabled' => (bool) env('GOOGLE_CALENDAR_PUSH_ENABLED', false),
+        'calendar_webhook_url' => env('GOOGLE_CALENDAR_WEBHOOK_URL'),
     ],
 
     'microsoft' => [

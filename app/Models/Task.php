@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Concerns\HasComments;
 use App\Models\Concerns\HasTags;
+use Carbon\CarbonImmutable;
 use Database\Factories\TaskFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,7 @@ class Task extends Model
         'project_id',
         'parent_id',
         'milestone_id',
+        'meeting_id',
         'status_id',
         'priority_id',
         'category',
@@ -54,7 +56,7 @@ class Task extends Model
         return ! empty($this->recurrence_rule) && $this->recurrence_rule !== 'none';
     }
 
-    public function nextOccurrenceDate(): ?\Carbon\CarbonImmutable
+    public function nextOccurrenceDate(): ?CarbonImmutable
     {
         if (! $this->isRecurring() || ! $this->due_date) {
             return null;
@@ -68,12 +70,14 @@ class Task extends Model
             default => null,
         };
 
-        if (! $next) return null;
+        if (! $next) {
+            return null;
+        }
         if ($this->recurrence_ends_on && $next->greaterThan($this->recurrence_ends_on)) {
             return null;
         }
 
-        return \Carbon\CarbonImmutable::parse($next);
+        return CarbonImmutable::parse($next);
     }
 
     protected static function booted(): void
@@ -100,6 +104,20 @@ class Task extends Model
     public function milestone(): BelongsTo
     {
         return $this->belongsTo(Milestone::class);
+    }
+
+    /**
+     * The meeting this task was scheduled as, if any. A task and its meeting are
+     * one thing on the calendar, never two rows.
+     */
+    public function meeting(): BelongsTo
+    {
+        return $this->belongsTo(Meeting::class);
+    }
+
+    public function isScheduled(): bool
+    {
+        return $this->meeting_id !== null;
     }
 
     public function parent(): BelongsTo
