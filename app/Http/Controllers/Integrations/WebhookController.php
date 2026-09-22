@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Integrations\IntegrationManager;
 use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Jobs\SyncIntegrationAccountInbox;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use App\Models\Message;
 use App\Models\WebhookDelivery;
@@ -77,14 +78,14 @@ class WebhookController extends Controller
                 continue;
             }
 
-            [$account, $kind] = $match;
+            [$accountId, $kind] = $match;
             $verified++;
 
             // Previously every notification queued an inbox sync, so calendar
             // subscriptions refreshed the wrong thing.
             match ($kind) {
-                'graph_calendar_token_hash' => SyncIntegrationAccountCalendar::dispatch($account->id),
-                default => SyncIntegrationAccountInbox::dispatch($account->id),
+                'calendar' => SyncIntegrationAccountCalendar::dispatch($accountId),
+                default => SyncIntegrationAccountInbox::dispatch($accountId),
             };
         }
 
@@ -121,7 +122,7 @@ class WebhookController extends Controller
         $state = (string) $request->header('X-Goog-Resource-State', '');
         $channelId = (string) $request->header('X-Goog-Channel-Id', '');
 
-        $account = $this->authenticateCalendarChannel(
+        $source = $this->authenticateCalendarChannel(
             (string) $request->header('X-Goog-Channel-Token', '')
         );
 
@@ -131,10 +132,10 @@ class WebhookController extends Controller
             'external_id' => $channelId ?: null,
             'headers' => $request->headers->all(),
             'payload' => $request->all(),
-            'signature_verified' => $account !== null,
+            'signature_verified' => $source !== null,
         ]);
 
-        if (! $account) {
+        if (! $source) {
             $delivery->forceFill(['error' => 'Channel token did not verify.'])->save();
 
             // Deliberately uniform: never reveal whether the account existed.
@@ -142,7 +143,7 @@ class WebhookController extends Controller
         }
 
         if ($state !== 'sync') {
-            SyncIntegrationAccountCalendar::dispatch($account->id);
+            SyncIntegrationAccountCalendar::dispatch($source->integration_account_id);
         }
 
         $delivery->forceFill(['processed_at' => now()])->save();
@@ -151,73 +152,87 @@ class WebhookController extends Controller
     }
 
     /**
-     * Resolve a calendar channel token to its account, or null if it does not
-     * verify.
+     * Resolve a calendar channel token to the calendar it was minted for, or
+     * null if it does not verify.
      *
-     * The token is `<accountId>.<secret>`. The id only selects the row — it is
-     * sequential and guessable, so it is never sufficient on its own. The secret
-     * is compared against the stored hash in constant time; anything else would
-     * let an unauthenticated caller trigger sync jobs for arbitrary accounts.
+     * The token is `<calendarSourceId>.<secret>`. The id only selects the row —
+     * it is sequential and guessable, so it is never sufficient on its own. The
+     * secret is compared against the stored hash in constant time; anything else
+     * would let an unauthenticated caller trigger sync jobs at will.
      */
-    protected function authenticateCalendarChannel(string $token): ?IntegrationAccount
+    protected function authenticateCalendarChannel(string $token): ?CalendarSource
     {
-        if (! str_contains($token, '.')) {
+        [$sourceId, $secret] = $this->splitToken($token);
+
+        if ($sourceId === null) {
             return null;
         }
 
-        [$accountId, $secret] = explode('.', $token, 2);
-
-        if (! ctype_digit($accountId) || $secret === '') {
-            return null;
-        }
-
-        $account = IntegrationAccount::query()->find((int) $accountId);
-        $expected = $account?->settings['calendar_channel_token_hash'] ?? null;
+        $source = CalendarSource::query()->find($sourceId);
+        $expected = $source?->watch_channel_token_hash;
 
         if (! is_string($expected) || $expected === '') {
             return null;
         }
 
         return hash_equals($expected, hash('sha256', $secret))
-            ? $account
+            ? $source
             : null;
     }
 
     /**
-     * Resolve a Graph subscription clientState to its account and which
-     * subscription it belongs to, or null if it does not verify.
+     * Split an `<id>.<secret>` token, rejecting anything malformed.
      *
-     * Same shape as the calendar channel token: `<accountId>.<secret>`, where only
-     * the secret authorises. The secret is compared in constant time.
+     * @return array{0: int|null, 1: string}
+     */
+    protected function splitToken(string $token): array
+    {
+        if (! str_contains($token, '.')) {
+            return [null, ''];
+        }
+
+        [$id, $secret] = explode('.', $token, 2);
+
+        if (! ctype_digit($id) || $secret === '') {
+            return [null, ''];
+        }
+
+        return [(int) $id, $secret];
+    }
+
+    /**
+     * Resolve a Graph subscription clientState to the account it belongs to and
+     * what it is a subscription for, or null if it does not verify.
      *
-     * @return array{0: IntegrationAccount, 1: string}|null
+     * Both kinds are shaped `<id>.<secret>`, where only the secret authorises.
+     * A calendar subscription's id is a calendar_sources row, since Graph
+     * subscribes per calendar; an inbox subscription's is the account itself.
+     * The secret is compared in constant time either way.
+     *
+     * @return array{0: int, 1: string}|null
      */
     protected function authenticateGraphSubscription(string $clientState): ?array
     {
-        if (! str_contains($clientState, '.')) {
-            return null;
-        }
+        [$id, $secret] = $this->splitToken($clientState);
 
-        [$accountId, $secret] = explode('.', $clientState, 2);
-
-        if (! ctype_digit($accountId) || $secret === '') {
-            return null;
-        }
-
-        $account = IntegrationAccount::query()->find((int) $accountId);
-
-        if (! $account) {
+        if ($id === null) {
             return null;
         }
 
         $presented = hash('sha256', $secret);
 
-        foreach (['graph_inbox_token_hash', 'graph_calendar_token_hash'] as $key) {
-            $expected = $account->settings[$key] ?? null;
+        $source = CalendarSource::query()->find($id);
+        $calendarHash = $source?->watch_channel_token_hash;
 
-            if (is_string($expected) && $expected !== '' && hash_equals($expected, $presented)) {
-                return [$account, $key];
-            }
+        if (is_string($calendarHash) && $calendarHash !== '' && hash_equals($calendarHash, $presented)) {
+            return [$source->integration_account_id, 'calendar'];
+        }
+
+        $account = IntegrationAccount::query()->find($id);
+        $inboxHash = $account?->settings['graph_inbox_token_hash'] ?? null;
+
+        if (is_string($inboxHash) && $inboxHash !== '' && hash_equals($inboxHash, $presented)) {
+            return [$account->id, 'inbox'];
         }
 
         return null;

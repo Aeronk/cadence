@@ -7,6 +7,7 @@ use App\Integrations\IntegrationManager;
 use App\Integrations\Providers\Microsoft\MicrosoftProvider;
 use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Jobs\SyncIntegrationAccountInbox;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -58,12 +59,31 @@ class MicrosoftWebhookTest extends TestCase
         Bus::assertDispatched(SyncIntegrationAccountInbox::class, fn ($job) => $job->integrationAccountId === $account->id);
     }
 
+    /**
+     * Graph subscribes per calendar, so a calendar clientState names a
+     * calendar_sources row rather than the account.
+     */
+    protected function registerCalendarSecret(IntegrationAccount $account, string $secret): string
+    {
+        $source = CalendarSource::create([
+            'integration_account_id' => $account->id,
+            'workspace_id' => $account->workspace_id,
+            'external_id' => 'AAMkAG-primary',
+            'name' => 'Calendar',
+            'is_selected' => true,
+        ]);
+
+        $source->forceFill(['watch_channel_token_hash' => hash('sha256', $secret)])->save();
+
+        return $source->id.'.'.$secret;
+    }
+
     public function test_a_calendar_subscription_dispatches_a_calendar_sync_not_an_inbox_sync(): void
     {
         Bus::fake();
 
         $account = IntegrationAccount::factory()->provider(IntegrationProvider::Microsoft)->create();
-        $clientState = $this->registerSecret($account, 'graph_calendar_token_hash', 'calendar-secret');
+        $clientState = $this->registerCalendarSecret($account, 'calendar-secret');
 
         $this->postJson('/integrations/microsoft/webhook', [
             'value' => [['clientState' => $clientState, 'changeType' => 'updated']],

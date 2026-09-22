@@ -126,16 +126,23 @@ class CalendarController extends Controller
         return CalendarEvent::query()
             ->forWorkspace($workspace)
             ->whereHas('integrationAccount', fn ($q) => $q->where('user_id', $user->id))
+            // Turning a calendar off in settings has to take its events off the
+            // page too, not merely stop new ones arriving. Rows written before
+            // multi-calendar support have no source and are kept.
+            ->where(fn ($q) => $q
+                ->whereNull('calendar_source_id')
+                ->orWhereHas('calendarSource', fn ($q) => $q->where('is_selected', true)))
             ->whereBetween('starts_at', [$rangeStart, $rangeEnd])
             // A row carrying meeting_id belongs to a Cadence meeting, which is
             // rendered from the meeting itself.
             ->whereNull('meeting_id')
             ->when($renderedExternalIds, fn ($q) => $q->whereNotIn('external_id', $renderedExternalIds))
+            ->with('calendarSource:id,name,color')
             ->orderBy('starts_at')
             ->get([
                 'id', 'title', 'starts_at', 'ends_at', 'location', 'all_day',
                 'recurring_event_id', 'recurrence', 'html_link', 'conference_url',
-                'integration_account_id',
+                'integration_account_id', 'calendar_source_id', 'response_status',
             ])
             ->map(fn (CalendarEvent $e) => [
                 'id' => 'external-'.$e->id,
@@ -150,6 +157,14 @@ class CalendarController extends Controller
                 'recurring' => $e->recurring_event_id !== null || ! empty($e->recurrence),
                 'task_id' => null,
                 'external_event_id' => null,
+                // Which calendar it came from, so two calendars can be told
+                // apart on the page rather than blurring into one feed.
+                'calendar' => $e->calendarSource ? [
+                    'id' => $e->calendarSource->id,
+                    'name' => $e->calendarSource->name,
+                    'color' => $e->calendarSource->color,
+                ] : null,
+                'response_status' => $e->response_status,
             ]);
     }
 

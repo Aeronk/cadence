@@ -7,6 +7,7 @@ use App\Integrations\IntegrationManager;
 use App\Integrations\Providers\Gmail\GmailProvider;
 use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Models\CalendarEvent;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use App\Models\Meeting;
 use App\Models\User;
@@ -21,9 +22,13 @@ class GoogleCalendarSyncTest extends TestCase
 
     protected const EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 
+    protected const CALENDAR_LIST_URL = 'https://www.googleapis.com/calendar/v3/users/me/calendarList';
+
     protected User $user;
 
     protected IntegrationAccount $account;
+
+    protected CalendarSource $calendar;
 
     protected function setUp(): void
     {
@@ -38,6 +43,20 @@ class GoogleCalendarSyncTest extends TestCase
                 'user_id' => $this->user->id,
                 'workspace_id' => $this->user->currentWorkspace()->id,
             ]);
+
+        // Events are pulled per calendar now, so the account needs at least one.
+        // Standing it up here keeps these tests about syncing rather than about
+        // discovery, which has its own tests below.
+        $this->calendar = CalendarSource::create([
+            'integration_account_id' => $this->account->id,
+            'workspace_id' => $this->account->workspace_id,
+            'external_id' => 'primary',
+            'name' => 'Personal',
+            'access_role' => 'owner',
+            'is_primary' => true,
+            'is_selected' => true,
+            'is_write_target' => true,
+        ]);
     }
 
     protected function provider(): GmailProvider
@@ -87,7 +106,7 @@ class GoogleCalendarSyncTest extends TestCase
         $this->assertSame('accepted', $event->attendees[0]['response_status']);
         $this->assertSame(['a@example.com', 'b@example.com'], $event->attendeeEmails());
 
-        $this->assertSame('token-1', $this->account->fresh()->sync_cursor);
+        $this->assertSame('token-1', $this->calendar->fresh()->sync_cursor);
     }
 
     public function test_an_all_day_event_is_flagged(): void
@@ -132,7 +151,7 @@ class GoogleCalendarSyncTest extends TestCase
 
     public function test_an_expired_sync_token_is_recovered_from_rather_than_breaking_sync_forever(): void
     {
-        $this->account->forceFill(['sync_cursor' => 'stale-token'])->save();
+        $this->calendar->forceFill(['sync_cursor' => 'stale-token'])->save();
 
         $calls = 0;
 
@@ -162,7 +181,7 @@ class GoogleCalendarSyncTest extends TestCase
         $this->assertSame(2, $calls);
         $this->assertSame(1, $count);
         $this->assertDatabaseHas('calendar_events', ['external_id' => 'evt-after-reset']);
-        $this->assertSame('fresh-token', $this->account->fresh()->sync_cursor);
+        $this->assertSame('fresh-token', $this->calendar->fresh()->sync_cursor);
 
         // The retry drops the token and asks for a window instead.
         Http::assertSent(fn ($request) => str_contains($request->url(), 'timeMin='));
@@ -170,7 +189,7 @@ class GoogleCalendarSyncTest extends TestCase
 
     public function test_an_incremental_sync_keeps_single_events_so_the_token_stays_valid(): void
     {
-        $this->account->forceFill(['sync_cursor' => 'good-token'])->save();
+        $this->calendar->forceFill(['sync_cursor' => 'good-token'])->save();
 
         Http::fake([self::EVENTS_URL.'*' => Http::response(['items' => []])]);
 
@@ -187,6 +206,7 @@ class GoogleCalendarSyncTest extends TestCase
         CalendarEvent::create([
             'workspace_id' => $this->account->workspace_id,
             'integration_account_id' => $this->account->id,
+            'calendar_source_id' => $this->calendar->id,
             'external_id' => 'evt-gone',
             'title' => 'Was happening',
             'starts_at' => now(),
@@ -215,6 +235,7 @@ class GoogleCalendarSyncTest extends TestCase
         CalendarEvent::create([
             'workspace_id' => $this->account->workspace_id,
             'integration_account_id' => $this->account->id,
+            'calendar_source_id' => $this->calendar->id,
             'meeting_id' => $meeting->id,
             'external_id' => 'evt-ours',
             'title' => 'Ours',
@@ -333,6 +354,7 @@ class GoogleCalendarSyncTest extends TestCase
         $event = CalendarEvent::create([
             'workspace_id' => $this->account->workspace_id,
             'integration_account_id' => $this->account->id,
+            'calendar_source_id' => $this->calendar->id,
             'external_id' => 'evt-vanished',
             'title' => 'Vanished',
             'starts_at' => now(),
@@ -352,7 +374,7 @@ class GoogleCalendarSyncTest extends TestCase
 
         Http::fake();
 
-        $this->provider()->watchCalendar($this->account);
+        $this->provider()->watchCalendar($this->account, $this->calendar);
 
         Http::assertNothingSent();
     }
@@ -373,18 +395,17 @@ class GoogleCalendarSyncTest extends TestCase
 
     /**
      * Register a channel secret the way watchCalendar does, and hand back the
-     * plaintext token Google would echo on each notification.
+     * plaintext token Google would echo on each notification. Channels belong to
+     * a calendar rather than an account, since Google subscribes per calendar.
      */
     protected function registerChannelSecret(string $secret = 's3cret-channel-value'): string
     {
-        $this->account->forceFill([
-            'settings' => array_merge($this->account->settings ?? [], [
-                'calendar_channel_id' => 'cadence-cal-'.$this->account->id.'-abc',
-                'calendar_channel_token_hash' => hash('sha256', $secret),
-            ]),
+        $this->calendar->forceFill([
+            'watch_channel_id' => 'cadence-cal-'.$this->calendar->id.'-abc',
+            'watch_channel_token_hash' => hash('sha256', $secret),
         ])->save();
 
-        return $this->account->id.'.'.$secret;
+        return $this->calendar->id.'.'.$secret;
     }
 
     public function test_watching_a_calendar_sends_a_secret_token_and_stores_only_its_hash(): void
@@ -401,7 +422,7 @@ class GoogleCalendarSyncTest extends TestCase
             ]),
         ]);
 
-        $this->provider()->watchCalendar($this->account);
+        $this->provider()->watchCalendar($this->account, $this->calendar);
 
         $sentToken = null;
         Http::assertSent(function ($request) use (&$sentToken) {
@@ -411,15 +432,18 @@ class GoogleCalendarSyncTest extends TestCase
         });
 
         [$id, $secret] = explode('.', $sentToken, 2);
-        $this->assertSame((string) $this->account->id, $id);
+        $this->assertSame((string) $this->calendar->id, $id);
 
         // The secret must be long enough not to be guessable, and must never be
         // stored in the clear.
         $this->assertGreaterThanOrEqual(32, strlen($secret));
 
-        $settings = $this->account->fresh()->settings;
-        $this->assertSame(hash('sha256', $secret), $settings['calendar_channel_token_hash']);
-        $this->assertStringNotContainsString($secret, json_encode($settings));
+        $fresh = $this->calendar->fresh();
+        $this->assertSame(hash('sha256', $secret), $fresh->watch_channel_token_hash);
+        $this->assertStringNotContainsString($secret, json_encode($fresh->toArray()));
+
+        // Expiry is recorded so the channel can be renewed before it lapses.
+        $this->assertNotNull($fresh->watch_expires_at);
     }
 
     public function test_the_calendar_webhook_queues_a_sync_for_a_verified_channel(): void
@@ -431,7 +455,7 @@ class GoogleCalendarSyncTest extends TestCase
         $this->postJson(route('integrations.webhooks.google-calendar'), [], [
             'X-Goog-Resource-State' => 'exists',
             'X-Goog-Channel-Token' => $token,
-            'X-Goog-Channel-Id' => 'cadence-cal-'.$this->account->id.'-abc',
+            'X-Goog-Channel-Id' => 'cadence-cal-'.$this->calendar->id.'-abc',
         ])->assertOk();
 
         Bus::assertDispatched(
@@ -458,7 +482,7 @@ class GoogleCalendarSyncTest extends TestCase
 
     /**
      * The route is public and CSRF-exempt, so a guessable token would let anyone
-     * trigger sync jobs for any account. The account id alone must never be
+     * trigger sync jobs for any account. The calendar id alone must never be
      * enough.
      */
     public function test_the_calendar_webhook_rejects_a_guessable_account_id_token(): void
@@ -467,7 +491,7 @@ class GoogleCalendarSyncTest extends TestCase
 
         $this->registerChannelSecret();
 
-        foreach (['account='.$this->account->id, (string) $this->account->id, $this->account->id.'.', $this->account->id.'.wrong-secret'] as $forged) {
+        foreach (['source='.$this->calendar->id, (string) $this->calendar->id, $this->calendar->id.'.', $this->calendar->id.'.wrong-secret'] as $forged) {
             $this->postJson(route('integrations.webhooks.google-calendar'), [], [
                 'X-Goog-Resource-State' => 'exists',
                 'X-Goog-Channel-Token' => $forged,

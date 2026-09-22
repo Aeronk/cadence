@@ -80,8 +80,11 @@ class OAuthController extends Controller
 
         SyncIntegrationAccountInbox::dispatch($account->id)->afterResponse();
         // Both providers carry a calendar scope, so a fresh connection should
-        // populate the calendar too rather than waiting for the next poll.
-        SyncIntegrationAccountCalendar::dispatch($account->id)->afterResponse();
+        // populate the calendar too rather than waiting for the next poll. The
+        // list of calendars is read first: without it there is nothing to pull
+        // events from, and nothing for the user to choose between.
+        SyncIntegrationAccountCalendar::dispatch($account->id, refreshCalendarList: true)
+            ->afterResponse();
 
         return redirect()->route('integrations.index')
             ->with('flash.success', $providerEnum->label().' connected.');

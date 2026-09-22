@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Integrations\CalendarSourceController;
 use App\Http\Controllers\Integrations\IntegrationAccountController;
 use App\Http\Controllers\Settings\NotificationPreferencesController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -31,6 +32,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('settings/integrations', [IntegrationAccountController::class, 'index'])->name('integrations.index');
     Route::delete('settings/integrations/{account}', [IntegrationAccountController::class, 'destroy'])->name('integrations.destroy');
+
+    // Which of a connected account's calendars Cadence reads and writes.
+    Route::post('settings/integrations/{account}/calendars/refresh', [CalendarSourceController::class, 'refresh'])
+        ->name('integrations.calendars.refresh');
+    Route::patch('settings/calendars/{source}', [CalendarSourceController::class, 'update'])
+        ->name('integrations.calendars.update');
 
     Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('notifications.edit');
     Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('notifications.update');

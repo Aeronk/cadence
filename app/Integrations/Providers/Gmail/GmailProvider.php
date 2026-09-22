@@ -7,6 +7,7 @@ use App\Integrations\Contracts\CalendarProvider;
 use App\Integrations\Contracts\EmailProvider;
 use App\Integrations\Contracts\OAuthProvider;
 use App\Models\CalendarEvent;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use App\Models\Meeting;
 use App\Models\Message;
@@ -25,7 +26,7 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 
     private const API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
-    private const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary';
+    private const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
     public function authorizationUrl(string $state, ?string $redirectUri = null): string
     {
@@ -196,38 +197,148 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
             ->throw();
     }
 
+    /**
+     * Refresh the account's CalendarList.
+     *
+     * Cadence used to read only the calendar literally named `primary`, so a
+     * shared team calendar, a partner's calendar or a second personal one simply
+     * did not exist as far as the app was concerned.
+     */
+    public function syncCalendarList(IntegrationAccount $account): int
+    {
+        $this->ensureValidToken($account);
+
+        $seen = [];
+        $pageToken = null;
+
+        do {
+            $response = Http::withToken($account->access_token)
+                ->get(self::CALENDAR_API.'/users/me/calendarList', array_filter([
+                    // Hidden calendars are listed too, so the user can turn one
+                    // back on from Cadence without going to Google first.
+                    'showHidden' => 'true',
+                    'maxResults' => 250,
+                    'pageToken' => $pageToken,
+                ]))
+                ->throw()
+                ->json();
+
+            foreach (($response['items'] ?? []) as $entry) {
+                if (! empty($entry['deleted'])) {
+                    CalendarSource::query()
+                        ->where('integration_account_id', $account->id)
+                        ->where('external_id', $entry['id'])
+                        ->delete();
+
+                    continue;
+                }
+
+                $source = CalendarSource::query()->firstOrNew([
+                    'integration_account_id' => $account->id,
+                    'external_id' => $entry['id'],
+                ]);
+
+                $source->fill([
+                    'workspace_id' => $account->workspace_id,
+                    'name' => $entry['summaryOverride'] ?? $entry['summary'] ?? $entry['id'],
+                    'description' => $entry['description'] ?? null,
+                    'timezone' => $entry['timeZone'] ?? null,
+                    'color' => $entry['backgroundColor'] ?? null,
+                    'access_role' => $entry['accessRole'] ?? null,
+                    'is_primary' => (bool) ($entry['primary'] ?? false),
+                ]);
+
+                // Which calendars to pull is the user's call, so their choice is
+                // only seeded from Google's own "selected" flag the first time a
+                // calendar is seen, never re-imposed on later refreshes.
+                if (! $source->exists) {
+                    $source->is_selected = (bool) ($entry['selected'] ?? $entry['primary'] ?? false);
+                }
+
+                $source->save();
+                $seen[] = $source->id;
+            }
+
+            $pageToken = $response['nextPageToken'] ?? null;
+        } while ($pageToken);
+
+        // Calendars the account no longer has access to. Their events go with
+        // them, since a row nobody can refresh only gets staler.
+        CalendarSource::query()
+            ->where('integration_account_id', $account->id)
+            ->when($seen, fn ($q) => $q->whereNotIn('id', $seen))
+            ->delete();
+
+        $this->ensureWriteTarget($account);
+
+        return count($seen);
+    }
+
     public function syncEvents(IntegrationAccount $account): int
     {
         $this->ensureValidToken($account);
 
+        // A first sync has no calendar list yet; without this the account would
+        // report zero events and never explain why.
+        if (! $account->calendarSources()->exists()) {
+            $this->syncCalendarList($account);
+        }
+
+        $persisted = 0;
+
+        foreach ($account->calendarSources()->selected()->get() as $source) {
+            // One calendar failing — revoked access, a bad token, a calendar
+            // deleted mid-sync — must not stop the others being pulled.
+            try {
+                $persisted += $this->syncCalendarEvents($account, $source);
+            } catch (RequestException $e) {
+                $source->forceFill([
+                    'last_error' => Str::limit($e->getMessage(), 1000),
+                ])->save();
+            }
+        }
+
+        $account->forceFill([
+            'last_synced_at' => now(),
+            'last_error' => null,
+        ])->save();
+
+        return $persisted;
+    }
+
+    /**
+     * Pull one calendar, recovering from an expired sync token.
+     */
+    protected function syncCalendarEvents(IntegrationAccount $account, CalendarSource $source): int
+    {
         try {
-            return $this->pullEvents($account, $account->sync_cursor);
+            return $this->pullEvents($account, $source, $source->sync_cursor);
         } catch (RequestException $e) {
             $status = $e->response->status();
 
             // 410 GONE means the sync token aged out; 400 means Google rejected it
             // as incompatible with the request. Either way the only recovery is a
             // full re-sync, so the cursor is dropped and the pull retried once.
-            // Without this an account's calendar stops updating permanently.
-            if (! $account->sync_cursor || ! in_array($status, [400, 410], true)) {
+            // Without this a calendar stops updating permanently.
+            if (! $source->sync_cursor || ! in_array($status, [400, 410], true)) {
                 throw $e;
             }
 
-            $account->forceFill(['sync_cursor' => null])->save();
+            $source->forceFill(['sync_cursor' => null])->save();
 
-            return $this->pullEvents($account, null);
+            return $this->pullEvents($account, $source, null);
         }
     }
 
     /**
-     * Read one page-set of events into `calendar_events`.
+     * Read one page-set of events from one calendar into `calendar_events`.
      *
      * `singleEvents=true` is sent on every request, incremental included, because
      * Google requires the parameters behind a sync token to stay identical. That
      * also means recurring series arrive already expanded into instances, each
      * carrying `recurringEventId` so they can be grouped back together.
      */
-    protected function pullEvents(IntegrationAccount $account, ?string $syncToken): int
+    protected function pullEvents(IntegrationAccount $account, CalendarSource $source, ?string $syncToken): int
     {
         $persisted = 0;
         $pageToken = null;
@@ -251,7 +362,7 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
             }
 
             $response = Http::withToken($account->access_token)
-                ->get(self::CALENDAR_BASE.'/events', $params)
+                ->get($this->calendarBase($source->external_id).'/events', $params)
                 ->throw()
                 ->json();
 
@@ -259,6 +370,7 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
                 if (($event['status'] ?? '') === 'cancelled') {
                     CalendarEvent::query()
                         ->where('integration_account_id', $account->id)
+                        ->where('calendar_source_id', $source->id)
                         ->where('external_id', $event['id'])
                         ->delete();
 
@@ -268,8 +380,12 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
                 // meeting_id is deliberately absent from the update payload: it is
                 // the link Cadence owns, and must survive a sync rewriting the row.
                 CalendarEvent::query()->updateOrCreate(
-                    ['integration_account_id' => $account->id, 'external_id' => $event['id']],
-                    $this->eventAttributes($account, $event),
+                    [
+                        'integration_account_id' => $account->id,
+                        'calendar_source_id' => $source->id,
+                        'external_id' => $event['id'],
+                    ],
+                    $this->eventAttributes($account, $event, $source),
                 );
 
                 $persisted++;
@@ -279,9 +395,9 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
             $nextSyncToken = $response['nextSyncToken'] ?? $nextSyncToken;
         } while ($pageToken);
 
-        $account->forceFill([
+        $source->forceFill([
             'last_synced_at' => now(),
-            'sync_cursor' => $nextSyncToken ?: $account->sync_cursor,
+            'sync_cursor' => $nextSyncToken ?: $source->sync_cursor,
             'last_error' => null,
         ])->save();
 
@@ -294,13 +410,18 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
      * @param  array<string, mixed>  $event
      * @return array<string, mixed>
      */
-    protected function eventAttributes(IntegrationAccount $account, array $event): array
+    protected function eventAttributes(IntegrationAccount $account, array $event, ?CalendarSource $source = null): array
     {
         $start = $event['start'] ?? [];
         $end = $event['end'] ?? [];
 
+        $attendees = collect($event['attendees'] ?? [])
+            ->filter(fn ($attendee) => ! empty($attendee['email']))
+            ->values();
+
         return [
             'workspace_id' => $account->workspace_id,
+            'calendar_source_id' => $source?->id,
             'etag' => $event['etag'] ?? null,
             'title' => $event['summary'] ?? '(no title)',
             'description' => $event['description'] ?? null,
@@ -309,18 +430,19 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
             'recurrence' => $event['recurrence'] ?? null,
             'recurring_event_id' => $event['recurringEventId'] ?? null,
             'organizer_email' => $event['organizer']['email'] ?? null,
+            // Google marks the account's own attendee row with `self`, which is
+            // the only reliable way to tell which RSVP is ours.
+            'response_status' => $attendees->firstWhere('self', true)['responseStatus'] ?? null,
             'html_link' => $event['htmlLink'] ?? null,
             'conference_url' => $event['hangoutLink'] ?? null,
             'starts_at' => $this->parseEventTime($start),
             'ends_at' => $this->parseEventTime($end),
-            'attendees' => collect($event['attendees'] ?? [])
-                ->filter(fn ($attendee) => ! empty($attendee['email']))
+            'attendees' => $attendees
                 ->map(fn ($attendee) => [
                     'email' => $attendee['email'],
                     'name' => $attendee['displayName'] ?? null,
                     'response_status' => $attendee['responseStatus'] ?? 'needsAction',
                 ])
-                ->values()
                 ->all(),
             'sync_status' => 'synced',
         ];
@@ -330,9 +452,12 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
     {
         $this->ensureValidToken($account);
 
+        $target = $this->writeTarget($account);
+
         $response = Http::withToken($account->access_token)
             ->post(
-                self::CALENDAR_BASE.'/events?'.http_build_query($this->writeQuery($meeting)),
+                $this->calendarBase($target?->external_id ?? 'primary')
+                    .'/events?'.http_build_query($this->writeQuery($meeting)),
                 $this->meetingPayload($meeting),
             )
             ->throw()
@@ -341,8 +466,12 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
         $this->captureConferenceUrl($meeting, $response);
 
         return CalendarEvent::query()->updateOrCreate(
-            ['integration_account_id' => $account->id, 'external_id' => $response['id']],
-            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id],
+            [
+                'integration_account_id' => $account->id,
+                'calendar_source_id' => $target?->id,
+                'external_id' => $response['id'],
+            ],
+            $this->eventAttributes($account, $response, $target) + ['meeting_id' => $meeting->id],
         );
     }
 
@@ -350,9 +479,17 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
     {
         $this->ensureValidToken($account);
 
+        // Edited on whichever calendar it was created on, not on whatever the
+        // write target happens to be today — moving the target must not orphan
+        // events already out there.
+        $calendarId = $event->calendarSource?->external_id
+            ?? $this->writeTarget($account)?->external_id
+            ?? 'primary';
+
         $response = Http::withToken($account->access_token)
             ->patch(
-                self::CALENDAR_BASE.'/events/'.$event->external_id.'?'.http_build_query($this->writeQuery($meeting)),
+                $this->calendarBase($calendarId).'/events/'.rawurlencode($event->external_id)
+                    .'?'.http_build_query($this->writeQuery($meeting)),
                 $this->meetingPayload($meeting),
             )
             ->throw()
@@ -361,7 +498,8 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
         $this->captureConferenceUrl($meeting, $response);
 
         $event->forceFill(
-            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id]
+            $this->eventAttributes($account, $response, $event->calendarSource)
+                + ['meeting_id' => $meeting->id]
         )->save();
 
         return $event;
@@ -371,8 +509,10 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
     {
         $this->ensureValidToken($account);
 
+        $calendarId = $event->calendarSource?->external_id ?? 'primary';
+
         $response = Http::withToken($account->access_token)
-            ->delete(self::CALENDAR_BASE.'/events/'.$event->external_id, [
+            ->delete($this->calendarBase($calendarId).'/events/'.rawurlencode($event->external_id), [
                 // Tell the attendees the meeting is off.
                 'sendUpdates' => 'all',
             ]);
@@ -385,7 +525,7 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
         $event->delete();
     }
 
-    public function watchCalendar(IntegrationAccount $account): void
+    public function watchCalendar(IntegrationAccount $account, CalendarSource $source): void
     {
         // Push needs a publicly reachable HTTPS callback on a domain Google has
         // verified. Without one configured we fall back to scheduled polling,
@@ -396,37 +536,77 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 
         $this->ensureValidToken($account);
 
-        $channelId = 'cadence-cal-'.$account->id.'-'.Str::random(16);
+        $channelId = 'cadence-cal-'.$source->id.'-'.Str::random(16);
 
         // The channel token is the only thing authenticating an inbound
         // notification, so it has to be a secret rather than something guessable.
-        // The account id is carried alongside it purely to find the row; the
+        // The source id is carried alongside it purely to find the row; the
         // random half is what authorises the request. Only the hash is kept, so a
         // leaked settings blob cannot be replayed against the webhook.
         $secret = Str::random(48);
 
         $response = Http::withToken($account->access_token)
-            ->post(self::CALENDAR_BASE.'/events/watch', [
+            ->post($this->calendarBase($source->external_id).'/events/watch', [
                 'id' => $channelId,
                 'type' => 'web_hook',
                 'address' => config('integrations.google.calendar_webhook_url')
                     ?: route('integrations.webhooks.google-calendar'),
                 // Echoed back on every notification.
-                'token' => $account->id.'.'.$secret,
+                'token' => $source->id.'.'.$secret,
             ])
             ->throw()
             ->json();
 
-        $account->forceFill([
-            'settings' => array_merge($account->settings ?? [], [
-                'calendar_channel_id' => $channelId,
-                'calendar_channel_token_hash' => hash('sha256', $secret),
-                'calendar_resource_id' => $response['resourceId'] ?? null,
-                'calendar_channel_expires_at' => isset($response['expiration'])
-                    ? CarbonImmutable::createFromTimestampMs((int) $response['expiration'])->toIso8601String()
-                    : null,
-            ]),
+        $source->forceFill([
+            'watch_channel_id' => $channelId,
+            'watch_channel_token_hash' => hash('sha256', $secret),
+            'watch_resource_id' => $response['resourceId'] ?? null,
+            'watch_expires_at' => isset($response['expiration'])
+                ? CarbonImmutable::createFromTimestampMs((int) $response['expiration'])
+                : null,
         ])->save();
+    }
+
+    /** Per-calendar API base. Calendar ids are email-like, so they need escaping. */
+    protected function calendarBase(string $calendarId): string
+    {
+        return self::CALENDAR_API.'/calendars/'.rawurlencode($calendarId);
+    }
+
+    /**
+     * The calendar meetings are written to, discovering the list first if this
+     * account has never had one.
+     */
+    protected function writeTarget(IntegrationAccount $account): ?CalendarSource
+    {
+        if (! $account->calendarSources()->exists()) {
+            $this->syncCalendarList($account);
+            // The discovery just wrote rows the account may already hold a
+            // stale (empty) copy of; dropping it forces a re-read.
+            $account->unsetRelation('calendarSources');
+        }
+
+        return $account->writeTargetCalendar();
+    }
+
+    /**
+     * Make sure exactly one calendar is marked as the write target, so a push
+     * never has to guess. Left alone once the user has chosen one.
+     */
+    protected function ensureWriteTarget(IntegrationAccount $account): void
+    {
+        if ($account->calendarSources()->where('is_write_target', true)->exists()) {
+            return;
+        }
+
+        $default = $account->calendarSources()->where('is_primary', true)->first()
+            ?? $account->calendarSources()
+                ->whereIn('access_role', CalendarSource::WRITABLE_ROLES)
+                ->first();
+
+        // Also read back, or a meeting pushed here would never return on the
+        // next sync and the calendar page would look like it had been lost.
+        $default?->forceFill(['is_write_target' => true, 'is_selected' => true])->save();
     }
 
     /**

@@ -1,65 +1,103 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Flag, Lock, Trash2 } from 'lucide-vue-next';
+import { Link } from '@inertiajs/vue3';
+import {
+    CheckCircle2,
+    ChevronDown,
+    ChevronRight,
+    Circle,
+    Flag,
+    Link2Off,
+    Lock,
+    MoreHorizontal,
+    Pencil,
+    Plus,
+    Trash2,
+} from 'lucide-vue-next';
 import { ref } from 'vue';
 import GoalRow from './GoalRow.vue';
+import {
+    formatDate,
+    progressBar,
+    statusBadge,
+    statusLabel,
+    typeBadge,
+    type GoalMilestone,
+    type GoalNode,
+} from '@/lib/goals';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-type Milestone = {
-    id: number;
-    title: string;
-    progress: number;
-    is_manual: boolean;
-    due_date: string | null;
-    completed_at: string | null;
-    project: { id: number; title: string; url: string } | null;
-};
-
-type Node = {
-    id: number;
-    parent_id: number | null;
-    type: 'vision' | 'goal' | 'objective';
-    title: string;
-    description: string | null;
-    horizon: string | null;
-    target_date: string | null;
-    progress: number;
-    completed_at: string | null;
-    milestones_count: number;
-    milestones: Milestone[];
-    children: Node[];
-};
-
-defineProps<{ node: Node; depth: number }>();
+defineProps<{ node: GoalNode; depth: number }>();
 
 // Milestones are collapsed by default so a long tree stays readable; opening one
 // is how you see what the goal's percentage is actually made of.
 const showMilestones = ref(false);
-const emit = defineEmits<{
-    (e: 'remove', node: Node): void;
-    (e: 'progress', node: Node, value: number): void;
-}>();
 
-const typeBadge = (t: string) => ({
-    vision: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300',
-    goal: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    objective: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-}[t] ?? 'bg-muted');
+const emit = defineEmits<{
+    (e: 'edit', node: GoalNode): void;
+    (e: 'remove', node: GoalNode): void;
+    (e: 'toggle-complete', node: GoalNode): void;
+    (e: 'add-milestone', node: GoalNode): void;
+    (e: 'toggle-milestone', milestone: GoalMilestone): void;
+    (e: 'unlink-milestone', milestone: GoalMilestone): void;
+    (e: 'remove-milestone', milestone: GoalMilestone): void;
+}>();
 </script>
 
 <template>
     <div :class="['border-b last:border-b-0', depth > 0 ? 'border-dashed' : '']">
-        <div class="group flex items-center gap-3 p-3" :style="{ paddingLeft: `${0.75 + depth * 1.25}rem` }">
+        <div
+            class="group flex items-center gap-3 p-3"
+            :style="{ paddingLeft: `${0.75 + depth * 1.25}rem` }"
+        >
+            <button
+                class="shrink-0 text-muted-foreground transition hover:text-foreground"
+                :title="node.completed_at ? 'Mark as not done' : 'Mark as done'"
+                @click="emit('toggle-complete', node)"
+            >
+                <CheckCircle2 v-if="node.completed_at" class="h-4 w-4 text-emerald-600" />
+                <Circle v-else class="h-4 w-4" />
+            </button>
+
             <span
-                class="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider"
+                class="shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider"
                 :class="typeBadge(node.type)"
             >
                 {{ node.type }}
             </span>
+
             <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium">{{ node.title }}</p>
-                <p v-if="node.target_date" class="text-xs text-muted-foreground">
-                    {{ node.horizon }} · target {{ node.target_date }}
+                <Link
+                    :href="node.url"
+                    class="block truncate text-sm font-medium hover:underline"
+                    :class="{ 'text-muted-foreground line-through': node.completed_at }"
+                >
+                    {{ node.title }}
+                </Link>
+                <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span v-if="node.horizon" class="capitalize">{{ node.horizon }}</span>
+                    <template v-if="node.target_date">
+                        <span v-if="node.horizon">&middot;</span>
+                        <span :class="{ 'font-medium text-rose-600 dark:text-rose-400': node.overdue }">
+                            target {{ formatDate(node.target_date) }}
+                        </span>
+                    </template>
                 </p>
             </div>
+
+            <span
+                v-if="!node.completed_at"
+                class="hidden shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium md:inline"
+                :class="statusBadge(node.status)"
+            >
+                {{ statusLabel(node.status) }}
+            </span>
+
             <button
                 v-if="node.milestones_count > 0"
                 class="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted"
@@ -72,22 +110,44 @@ const typeBadge = (t: string) => ({
                 {{ node.milestones_count }}
             </button>
 
-            <div class="flex items-center gap-2">
+            <div class="flex shrink-0 items-center gap-2">
                 <div class="hidden w-32 sm:block">
                     <div class="h-1.5 overflow-hidden rounded-full bg-muted">
                         <div
-                            class="h-full bg-primary"
+                            class="h-full transition-all"
+                            :class="progressBar(node)"
                             :style="{ width: `${node.progress}%` }"
                         />
                     </div>
                 </div>
-                <span class="text-xs font-medium tabular-nums">{{ node.progress }}%</span>
-                <button
-                    class="opacity-0 transition group-hover:opacity-100"
-                    @click="emit('remove', node)"
-                >
-                    <Trash2 class="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                </button>
+                <span class="w-9 text-right text-xs font-medium tabular-nums">{{ node.progress }}%</span>
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                        <button
+                            class="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+                            aria-label="Goal actions"
+                        >
+                            <MoreHorizontal class="h-4 w-4" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem @select="emit('edit', node)">
+                            <Pencil class="mr-2 h-4 w-4" /> Edit goal
+                        </DropdownMenuItem>
+                        <DropdownMenuItem @select="emit('add-milestone', node)">
+                            <Plus class="mr-2 h-4 w-4" /> Add milestone
+                        </DropdownMenuItem>
+                        <DropdownMenuItem @select="emit('toggle-complete', node)">
+                            <CheckCircle2 class="mr-2 h-4 w-4" />
+                            {{ node.completed_at ? 'Reopen' : 'Mark done' }}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" @select="emit('remove', node)">
+                            <Trash2 class="mr-2 h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </div>
 
@@ -100,30 +160,39 @@ const typeBadge = (t: string) => ({
             <div
                 v-for="m in node.milestones"
                 :key="m.id"
-                class="flex items-center gap-3"
+                class="group/m flex items-center gap-3"
             >
+                <button
+                    class="shrink-0 text-muted-foreground transition hover:text-foreground"
+                    :title="m.completed_at ? 'Mark as not done' : 'Mark as done'"
+                    @click="emit('toggle-milestone', m)"
+                >
+                    <CheckCircle2 v-if="m.completed_at" class="h-3.5 w-3.5 text-emerald-600" />
+                    <Circle v-else class="h-3.5 w-3.5" />
+                </button>
+
                 <div class="min-w-0 flex-1">
                     <p class="truncate text-xs font-medium">
-                        <span :class="{ 'line-through text-muted-foreground': m.completed_at }">
+                        <span :class="{ 'text-muted-foreground line-through': m.completed_at }">
                             {{ m.title }}
                         </span>
                         <Lock
                             v-if="m.is_manual"
                             class="ml-1 inline h-2.5 w-2.5 text-muted-foreground"
-                            title="Progress set by hand rather than counted from tasks"
+                            aria-label="Progress set by hand rather than counted from tasks"
                         />
                     </p>
                     <p class="text-[11px] text-muted-foreground">
-                        <a
-                            v-if="m.project"
-                            :href="m.project.url"
-                            class="hover:underline"
-                        >{{ m.project.title }}</a>
+                        <a v-if="m.project" :href="m.project.url" class="hover:underline">
+                            {{ m.project.title }}
+                        </a>
+                        <span v-else class="italic">Goal milestone</span>
                         <template v-if="m.due_date">
-                            <span v-if="m.project"> &middot; </span>due {{ m.due_date }}
+                            <span> &middot; </span>due {{ formatDate(m.due_date) }}
                         </template>
                     </p>
                 </div>
+
                 <div class="hidden w-24 sm:block">
                     <div class="h-1 overflow-hidden rounded-full bg-muted">
                         <div class="h-full bg-primary/70" :style="{ width: `${m.progress}%` }" />
@@ -132,6 +201,26 @@ const typeBadge = (t: string) => ({
                 <span class="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
                     {{ m.progress }}%
                 </span>
+
+                <!-- A milestone with a project is only unlinked here; it goes on
+                     living in that project. One without a project exists solely
+                     for this goal, so deleting is the only way out. -->
+                <button
+                    v-if="m.project"
+                    class="opacity-0 transition group-hover/m:opacity-100"
+                    title="Unlink from this goal"
+                    @click="emit('unlink-milestone', m)"
+                >
+                    <Link2Off class="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
+                <button
+                    v-else
+                    class="opacity-0 transition group-hover/m:opacity-100"
+                    title="Delete milestone"
+                    @click="emit('remove-milestone', m)"
+                >
+                    <Trash2 class="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                </button>
             </div>
         </div>
 
@@ -140,8 +229,13 @@ const typeBadge = (t: string) => ({
             :key="child.id"
             :node="child"
             :depth="depth + 1"
+            @edit="(n) => emit('edit', n)"
             @remove="(n) => emit('remove', n)"
-            @progress="(n, v) => emit('progress', n, v)"
+            @toggle-complete="(n) => emit('toggle-complete', n)"
+            @add-milestone="(n) => emit('add-milestone', n)"
+            @toggle-milestone="(m) => emit('toggle-milestone', m)"
+            @unlink-milestone="(m) => emit('unlink-milestone', m)"
+            @remove-milestone="(m) => emit('remove-milestone', m)"
         />
     </div>
 </template>

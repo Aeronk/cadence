@@ -44,13 +44,23 @@ class Milestone extends Model
     {
         static::creating(function (Milestone $milestone): void {
             if ($milestone->position === null || $milestone->position === 0) {
+                // Position is per project, or per goal for a milestone that has
+                // no project. `where('project_id', null)` matches nothing in SQL,
+                // so the null case has to be asked as `whereNull` or every
+                // goal-only milestone would be created at position 0.
                 $milestone->position = (static::query()
-                    ->where('project_id', $milestone->project_id)
+                    ->when(
+                        $milestone->project_id,
+                        fn ($q) => $q->where('project_id', $milestone->project_id),
+                        fn ($q) => $q->whereNull('project_id')->where('goal_id', $milestone->goal_id),
+                    )
                     ->max('position') ?? -1) + 1;
             }
 
-            if (! $milestone->workspace_id && $milestone->project_id) {
-                $milestone->workspace_id = Project::query()->whereKey($milestone->project_id)->value('workspace_id');
+            if (! $milestone->workspace_id) {
+                $milestone->workspace_id = $milestone->project_id
+                    ? Project::query()->whereKey($milestone->project_id)->value('workspace_id')
+                    : Goal::query()->whereKey($milestone->goal_id)->value('workspace_id');
             }
         });
     }
@@ -98,6 +108,10 @@ class Milestone extends Model
     {
         if ($this->manual_progress !== null) {
             return (int) $this->manual_progress;
+        }
+
+        if ($this->completed_at !== null) {
+            return 100;
         }
 
         $total = $this->tasks()->count();

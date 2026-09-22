@@ -13,6 +13,7 @@ class CalendarEvent extends Model
     protected $fillable = [
         'workspace_id',
         'integration_account_id',
+        'calendar_source_id',
         'meeting_id',
         'external_id',
         'etag',
@@ -23,6 +24,7 @@ class CalendarEvent extends Model
         'recurrence',
         'recurring_event_id',
         'organizer_email',
+        'response_status',
         'html_link',
         'conference_url',
         'starts_at',
@@ -45,6 +47,11 @@ class CalendarEvent extends Model
     public function integrationAccount(): BelongsTo
     {
         return $this->belongsTo(IntegrationAccount::class);
+    }
+
+    public function calendarSource(): BelongsTo
+    {
+        return $this->belongsTo(CalendarSource::class);
     }
 
     public function meeting(): BelongsTo

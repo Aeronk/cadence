@@ -1,44 +1,22 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { Link2, Target, Plus, Trash2 } from 'lucide-vue-next';
+import { Head, router } from '@inertiajs/vue3';
+import { Link2, Plus, Target } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import StatsBanner from '@/components/StatsBanner.vue';
+import GoalRow from '@/components/GoalRow.vue';
+import GoalFormDialog from '@/components/GoalFormDialog.vue';
+import MilestoneFormDialog from '@/components/MilestoneFormDialog.vue';
 import {
     Dialog,
     DialogContent,
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog';
-import GoalRow from '@/components/GoalRow.vue';
-
-type Goal = {
-    id: number;
-    parent_id: number | null;
-    type: 'vision' | 'goal' | 'objective';
-    title: string;
-    description: string | null;
-    horizon: string | null;
-    target_date: string | null;
-    progress: number;
-    completed_at: string | null;
-    milestones_count: number;
-    milestones: Milestone[];
-};
-
-type Milestone = {
-    id: number;
-    title: string;
-    progress: number;
-    is_manual: boolean;
-    due_date: string | null;
-    completed_at: string | null;
-    project: { id: number; title: string; url: string } | null;
-};
+import { buildTree, type Goal, type GoalMilestone } from '@/lib/goals';
 
 type LinkableMilestone = {
     id: number;
@@ -49,84 +27,135 @@ type LinkableMilestone = {
 
 const props = defineProps<{
     goals: Goal[];
+    stats: {
+        total: number;
+        completed: number;
+        at_risk: number;
+        off_track: number;
+        overdue: number;
+    };
     linkable_milestones: LinkableMilestone[];
+    projects: { id: number; title: string }[];
 }>();
 
-const dialogOpen = ref(false);
-const form = useForm({
-    type: 'goal' as 'vision' | 'goal' | 'objective',
-    parent_id: null as number | null,
-    title: '',
-    description: '',
-    horizon: 'year' as 'year' | 'quarter' | 'month',
-    target_date: '',
-    // No progress field: `progress` is a reserved useForm name (so it never
-    // actually worked), and a goal's progress is the average of its milestones.
+const tree = computed(() => buildTree(props.goals));
+
+const bannerStats = computed(() => [
+    { label: 'Goals', value: props.stats.total, color: 'blue' as const },
+    { label: 'Completed', value: props.stats.completed, color: 'emerald' as const },
+    { label: 'At risk', value: props.stats.at_risk, color: 'amber' as const },
+    { label: 'Off track', value: props.stats.off_track, color: 'red' as const },
+    { label: 'Overdue', value: props.stats.overdue, color: 'orange' as const },
+]);
+
+/* Create / edit — one dialog, `editing` decides which. */
+const goalDialogOpen = ref(false);
+const editing = ref<Goal | null>(null);
+
+/**
+ * Parents the open dialog may offer. Editing a goal excludes its own subtree —
+ * moving a goal under one of its descendants would cut the branch loose from
+ * every root and it would stop being drawn at all. The server rejects it too;
+ * this stops it being offered in the first place.
+ */
+const parentOptions = computed(() => {
+    const banned = new Set<number>();
+
+    if (editing.value) {
+        const queue = [editing.value.id];
+        while (queue.length) {
+            const id = queue.shift()!;
+            if (banned.has(id)) continue;
+            banned.add(id);
+            for (const g of props.goals) {
+                if (g.parent_id === id) queue.push(g.id);
+            }
+        }
+    }
+
+    return props.goals
+        .filter((g) => !banned.has(g.id))
+        .map((g) => ({ id: g.id, title: g.title, type: g.type }));
 });
 
-function submit() {
-    form.post('/goals', {
-        onSuccess: () => {
-            form.reset();
-            form.type = 'goal';
-            form.horizon = 'year';
-            dialogOpen.value = false;
-        },
-    });
+function openCreate() {
+    editing.value = null;
+    goalDialogOpen.value = true;
 }
 
-function remove(g: Goal) {
-    if (!confirm(`Delete "${g.title}"?`)) return;
-    router.delete(`/goals/${g.id}`, { preserveScroll: true });
+function openEdit(goal: Goal) {
+    // The tree nodes carry a `children` array the form has no use for; the flat
+    // record is passed so the dialog only ever sees goal fields.
+    editing.value = props.goals.find((g) => g.id === goal.id) ?? goal;
+    goalDialogOpen.value = true;
 }
 
-function setProgress(g: Goal, v: number) {
-    router.patch(`/goals/${g.id}`, { progress: v }, { preserveScroll: true });
+/* Milestones under a goal. */
+const milestoneDialogOpen = ref(false);
+const milestoneGoal = ref<Goal | null>(null);
+
+function openAddMilestone(goal: Goal) {
+    milestoneGoal.value = goal;
+    milestoneDialogOpen.value = true;
 }
 
-/* Linking a milestone to a goal is what makes the goal's progress roll up. */
+function toggleComplete(goal: Goal) {
+    router.patch(
+        `/goals/${goal.id}`,
+        { completed: !goal.completed_at },
+        { preserveScroll: true },
+    );
+}
+
+function remove(goal: Goal) {
+    if (
+        !confirm(
+            `Delete "${goal.title}"? Sub-goals move up a level and project milestones are unlinked, not deleted.`,
+        )
+    ) {
+        return;
+    }
+    router.delete(`/goals/${goal.id}`, { preserveScroll: true });
+}
+
+function toggleMilestone(m: GoalMilestone) {
+    router.patch(
+        `/milestones/${m.id}`,
+        { completed: !m.completed_at },
+        { preserveScroll: true },
+    );
+}
+
+function unlinkMilestone(m: GoalMilestone) {
+    if (!confirm(`Unlink "${m.title}" from this goal? It stays in its project.`)) return;
+    router.patch(`/milestones/${m.id}`, { goal_id: null }, { preserveScroll: true });
+}
+
+function removeMilestone(m: GoalMilestone) {
+    if (!confirm(`Delete milestone "${m.title}"?`)) return;
+    router.delete(`/milestones/${m.id}`, { preserveScroll: true });
+}
+
+/* Linking an existing project milestone is the other way progress rolls up. */
 const linkOpen = ref(false);
-const linkForm = useForm({
-    goal_id: null as number | null,
-    milestone_id: null as number | null,
-});
+const linkGoalId = ref<number | null>(null);
+const linkMilestoneId = ref<number | null>(null);
 
 function linkMilestone() {
-    if (!linkForm.milestone_id) return;
+    if (!linkMilestoneId.value || !linkGoalId.value) return;
     router.patch(
-        `/milestones/${linkForm.milestone_id}`,
-        { goal_id: linkForm.goal_id },
+        `/milestones/${linkMilestoneId.value}`,
+        { goal_id: linkGoalId.value },
         {
             preserveScroll: true,
             onSuccess: () => {
-                linkForm.reset();
+                linkGoalId.value = null;
+                linkMilestoneId.value = null;
                 linkOpen.value = false;
             },
         },
     );
 }
-
-// Build a tree from flat list (parent_id chain)
-type Node = Goal & { children: Node[] };
-const tree = computed<Node[]>(() => {
-    const map: Record<number, Node> = {};
-    const roots: Node[] = [];
-    for (const g of props.goals) map[g.id] = { ...g, children: [] };
-    for (const g of props.goals) {
-        if (g.parent_id && map[g.parent_id]) {
-            map[g.parent_id].children.push(map[g.id]);
-        } else {
-            roots.push(map[g.id]);
-        }
-    }
-    return roots;
-});
-
-const typeBadge = (t: string) => ({
-    vision: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300',
-    goal: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    objective: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-}[t] ?? 'bg-muted');
 </script>
 
 <template>
@@ -134,7 +163,7 @@ const typeBadge = (t: string) => ({
 
     <AppLayout :breadcrumbs="[{ title: 'Goals', href: '/goals' }]">
         <div class="flex flex-col gap-4 p-6">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h1 class="text-2xl font-bold">Goals</h1>
                     <p class="text-sm text-muted-foreground">
@@ -142,150 +171,105 @@ const typeBadge = (t: string) => ({
                     </p>
                 </div>
                 <div class="flex gap-2">
-                <Dialog v-if="linkable_milestones.length && goals.length" v-model:open="linkOpen">
-                    <DialogTrigger as-child>
-                        <Button variant="outline">
-                            <Link2 class="mr-2 h-4 w-4" /> Link milestone
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Link a milestone to a goal</DialogTitle>
-                        </DialogHeader>
-                        <form class="space-y-4" @submit.prevent="linkMilestone">
-                            <p class="text-sm text-muted-foreground">
-                                A goal's progress is the average of the milestones under it,
-                                and each milestone tracks the tasks assigned to it.
-                            </p>
-                            <div>
-                                <Label for="link-goal">Goal</Label>
-                                <select
-                                    id="link-goal"
-                                    v-model="linkForm.goal_id"
-                                    required
-                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                >
-                                    <option :value="null" disabled>Choose a goal…</option>
-                                    <option v-for="g in goals" :key="g.id" :value="g.id">
-                                        {{ g.title }}
-                                    </option>
-                                </select>
-                            </div>
-                            <div>
-                                <Label for="link-milestone">Milestone</Label>
-                                <select
-                                    id="link-milestone"
-                                    v-model="linkForm.milestone_id"
-                                    required
-                                    class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                >
-                                    <option :value="null" disabled>Choose a milestone…</option>
-                                    <option
-                                        v-for="m in linkable_milestones"
-                                        :key="m.id"
-                                        :value="m.id"
-                                    >
-                                        {{ m.title }}<template v-if="m.project_title"> — {{ m.project_title }}</template>
-                                    </option>
-                                </select>
-                            </div>
-                            <DialogFooter>
-                                <Button type="submit" :disabled="!linkForm.milestone_id || !linkForm.goal_id">
-                                    Link
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
-
-                <Dialog v-model:open="dialogOpen">
-                    <DialogTrigger as-child>
-                        <Button>
-                            <Plus class="mr-2 h-4 w-4" /> New goal
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>New goal</DialogTitle>
-                        </DialogHeader>
-                        <form class="space-y-4" @submit.prevent="submit">
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <Label for="type">Type</Label>
-                                    <select
-                                        id="type"
-                                        v-model="form.type"
-                                        class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option value="vision">Vision</option>
-                                        <option value="goal">Goal</option>
-                                        <option value="objective">Objective</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <Label for="parent_id">Parent</Label>
-                                    <select
-                                        id="parent_id"
-                                        v-model="form.parent_id"
-                                        class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option :value="null">— Top level —</option>
-                                        <option v-for="g in goals" :key="g.id" :value="g.id">
-                                            {{ g.title }}
-                                        </option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <Label for="title">Title</Label>
-                                <Input id="title" v-model="form.title" required />
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <Label for="horizon">Horizon</Label>
-                                    <select
-                                        id="horizon"
-                                        v-model="form.horizon"
-                                        class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    >
-                                        <option value="year">Year</option>
-                                        <option value="quarter">Quarter</option>
-                                        <option value="month">Month</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <Label for="target_date">Target date</Label>
-                                    <Input id="target_date" v-model="form.target_date" type="date" />
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button type="submit" :disabled="form.processing">Create</Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                    <Button
+                        v-if="linkable_milestones.length && goals.length"
+                        variant="outline"
+                        @click="linkOpen = true"
+                    >
+                        <Link2 class="mr-2 h-4 w-4" /> Link milestone
+                    </Button>
+                    <Button @click="openCreate">
+                        <Plus class="mr-2 h-4 w-4" /> New goal
+                    </Button>
                 </div>
             </div>
+
+            <StatsBanner v-if="goals.length" :stats="bannerStats" />
 
             <div v-if="tree.length === 0" class="rounded-xl border border-dashed p-12 text-center">
                 <Target class="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
                 <p class="text-sm text-muted-foreground">No goals yet. Start with a vision.</p>
+                <Button class="mt-4" variant="outline" @click="openCreate">
+                    <Plus class="mr-2 h-4 w-4" /> New goal
+                </Button>
             </div>
 
             <div v-else class="space-y-3">
-                <div
-                    v-for="root in tree"
-                    :key="root.id"
-                    class="rounded-xl border bg-card"
-                >
+                <div v-for="root in tree" :key="root.id" class="rounded-xl border bg-card">
                     <GoalRow
                         :node="root"
                         :depth="0"
+                        @edit="openEdit"
                         @remove="remove"
-                        @progress="setProgress"
+                        @toggle-complete="toggleComplete"
+                        @add-milestone="openAddMilestone"
+                        @toggle-milestone="toggleMilestone"
+                        @unlink-milestone="unlinkMilestone"
+                        @remove-milestone="removeMilestone"
                     />
                 </div>
             </div>
         </div>
+
+        <GoalFormDialog
+            v-model:open="goalDialogOpen"
+            :goal="editing"
+            :parent-options="parentOptions"
+        />
+
+        <MilestoneFormDialog
+            v-model:open="milestoneDialogOpen"
+            :goal-id="milestoneGoal?.id ?? null"
+            :goal-title="milestoneGoal?.title ?? ''"
+            :projects="projects"
+        />
+
+        <Dialog v-model:open="linkOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Link a milestone to a goal</DialogTitle>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="linkMilestone">
+                    <p class="text-sm text-muted-foreground">
+                        A goal's progress is the average of the milestones under it, and each
+                        milestone tracks the tasks assigned to it.
+                    </p>
+                    <div>
+                        <Label for="link-goal">Goal</Label>
+                        <select
+                            id="link-goal"
+                            v-model="linkGoalId"
+                            required
+                            class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                            <option :value="null" disabled>Choose a goal…</option>
+                            <option v-for="g in goals" :key="g.id" :value="g.id">
+                                {{ g.title }}
+                            </option>
+                        </select>
+                    </div>
+                    <div>
+                        <Label for="link-milestone">Milestone</Label>
+                        <select
+                            id="link-milestone"
+                            v-model="linkMilestoneId"
+                            required
+                            class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                            <option :value="null" disabled>Choose a milestone…</option>
+                            <option v-for="m in linkable_milestones" :key="m.id" :value="m.id">
+                                {{ m.title
+                                }}<template v-if="m.project_title"> — {{ m.project_title }}</template>
+                            </option>
+                        </select>
+                    </div>
+                    <DialogFooter>
+                        <Button type="submit" :disabled="!linkMilestoneId || !linkGoalId">
+                            Link
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

@@ -2,6 +2,7 @@
 
 use App\Console\Commands\GenerateDailyBriefings;
 use App\Console\Commands\GenerateRecurringOccurrences;
+use App\Console\Commands\RenewCalendarWatches;
 use App\Console\Commands\SendDueReminders;
 use App\Console\Commands\SendMeetingReminders;
 use App\Console\Commands\SyncCalendars;
@@ -40,5 +41,20 @@ Schedule::command(GenerateDailyBriefings::class)
 // up at all.
 Schedule::command(SyncCalendars::class)
     ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Which calendars an account owns changes rarely, so the list is re-read once a
+// day rather than on every poll.
+Schedule::command(SyncCalendars::class, ['--refresh-list'])
+    ->dailyAt('03:10')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Push channels expire — Google caps a calendar channel at about a month, Graph
+// at roughly three days. Renewing hourly means a lapse is measured in minutes
+// rather than leaving push silently off until someone notices.
+Schedule::command(RenewCalendarWatches::class)
+    ->hourly()
     ->withoutOverlapping()
     ->runInBackground();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Enums\IntegrationProvider;
 use App\Http\Controllers\Controller;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,8 +19,9 @@ class IntegrationAccountController extends Controller
 
         $accounts = IntegrationAccount::query()
             ->where('user_id', $user->id)
-            ->get(['id', 'provider', 'display_name', 'status', 'last_synced_at', 'last_error', 'token_expires_at'])
-            ->map(fn ($a) => [
+            ->with(['calendarSources' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('name')])
+            ->get()
+            ->map(fn (IntegrationAccount $a) => [
                 'id' => $a->id,
                 'provider' => $a->provider->value,
                 'provider_label' => $a->provider->label(),
@@ -28,6 +30,23 @@ class IntegrationAccountController extends Controller
                 'last_synced_at' => $a->last_synced_at?->toIso8601String(),
                 'last_error' => $a->last_error,
                 'token_expired' => $a->tokenIsExpired(),
+                // Only the calendar providers have calendars to choose between;
+                // for the rest this is an empty list and the section is hidden.
+                'calendars' => $a->calendarSources->map(fn (CalendarSource $c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'color' => $c->color,
+                    'is_primary' => $c->is_primary,
+                    'is_selected' => $c->is_selected,
+                    'is_write_target' => $c->is_write_target,
+                    'is_writable' => $c->isWritable(),
+                    'access_role' => $c->access_role,
+                    'last_synced_at' => $c->last_synced_at?->toIso8601String(),
+                    'last_error' => $c->last_error,
+                    // Push is what makes a change show up in seconds rather than
+                    // at the next quarter-hour poll.
+                    'push_active' => $c->watch_expires_at !== null && $c->watch_expires_at->isFuture(),
+                ])->values(),
             ]);
 
         return Inertia::render('settings/Integrations', [

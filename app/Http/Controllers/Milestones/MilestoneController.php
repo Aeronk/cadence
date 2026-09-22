@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Milestones;
 
 use App\Http\Controllers\Controller;
+use App\Models\Goal;
 use App\Models\Milestone;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
+use Illuminate\Validation\ValidationException;
 
 class MilestoneController extends Controller
 {
@@ -19,7 +21,13 @@ class MilestoneController extends Controller
         $workspaceId = $request->user()->currentWorkspace()->id;
 
         $data = $request->validate([
-            'project_id' => ['required', Rule::exists('projects', 'id')->where('workspace_id', $workspaceId)],
+            // A milestone belongs to a project, a goal, or both. Requiring a
+            // project forced people to invent throwaway projects to record a
+            // personal checkpoint, so either anchor is now enough.
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')->where('workspace_id', $workspaceId),
+            ],
             // Linking a milestone to a goal is what makes goal progress roll up.
             'goal_id' => ['nullable', $this->goalRule($request)],
             'title' => ['required', 'string', 'max:255'],
@@ -28,11 +36,22 @@ class MilestoneController extends Controller
             'manual_progress' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
-        $project = Project::findOrFail($data['project_id']);
-        $this->authorize('view', $project);
+        if (empty($data['project_id']) && empty($data['goal_id'])) {
+            throw ValidationException::withMessages([
+                'project_id' => 'A milestone needs either a project or a goal to belong to.',
+            ]);
+        }
+
+        // Being in the workspace is not the same as being allowed near the
+        // project, so the project itself still has to grant it.
+        if (! empty($data['project_id'])) {
+            $this->authorize('update', Project::findOrFail($data['project_id']));
+        }
+
+        $workspaceId = $this->resolveWorkspace($data, $workspaceId);
 
         $milestone = Milestone::create($data + [
-            'workspace_id' => $project->workspace_id,
+            'workspace_id' => $workspaceId,
             'created_by' => $request->user()->id,
         ]);
 
@@ -57,6 +76,16 @@ class MilestoneController extends Controller
             'position' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        // Unlinking a milestone that has no project would leave it belonging to
+        // nothing and reachable by nobody — the policy has no owner to ask.
+        if (array_key_exists('goal_id', $data)
+            && $data['goal_id'] === null
+            && $milestone->project_id === null) {
+            throw ValidationException::withMessages([
+                'goal_id' => 'This milestone has no project, so it cannot be unlinked from its goal. Delete it instead.',
+            ]);
+        }
+
         if (array_key_exists('completed', $data)) {
             $milestone->completed_at = $data['completed'] ? now() : null;
             // Marking it done pins progress at 100 rather than leaving the bar
@@ -79,6 +108,26 @@ class MilestoneController extends Controller
         $milestone->delete();
 
         return back()->with('flash.success', 'Milestone removed.');
+    }
+
+    /**
+     * The workspace the milestone lands in: the project's if there is one, else
+     * the goal's. Both were already checked to be in the caller's workspace, so
+     * this only picks which record to read it from.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function resolveWorkspace(array $data, int $fallback): int
+    {
+        if (! empty($data['project_id'])) {
+            return (int) Project::query()->whereKey($data['project_id'])->value('workspace_id');
+        }
+
+        if (! empty($data['goal_id'])) {
+            return (int) Goal::query()->whereKey($data['goal_id'])->value('workspace_id');
+        }
+
+        return $fallback;
     }
 
     /**

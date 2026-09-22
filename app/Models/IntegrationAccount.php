@@ -65,6 +65,27 @@ class IntegrationAccount extends Model
         return $this->hasMany(CalendarEvent::class);
     }
 
+    public function calendarSources(): HasMany
+    {
+        return $this->hasMany(CalendarSource::class);
+    }
+
+    /**
+     * The calendar that meetings created in Cadence are pushed to. Falls back to
+     * the provider's primary calendar, then to any writable one, so a push never
+     * fails purely because nobody has chosen a target.
+     */
+    public function writeTargetCalendar(): ?CalendarSource
+    {
+        $sources = $this->relationLoaded('calendarSources')
+            ? $this->calendarSources
+            : $this->calendarSources()->get();
+
+        return $sources->firstWhere('is_write_target', true)
+            ?? $sources->firstWhere('is_primary', true)
+            ?? $sources->first(fn (CalendarSource $s) => $s->isWritable());
+    }
+
     public function tokenIsExpired(): bool
     {
         return $this->token_expires_at !== null

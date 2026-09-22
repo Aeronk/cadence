@@ -7,10 +7,12 @@ use App\Integrations\Contracts\CalendarProvider;
 use App\Integrations\Contracts\EmailProvider;
 use App\Integrations\Contracts\OAuthProvider;
 use App\Models\CalendarEvent;
+use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
 use App\Models\Meeting;
 use App\Models\Message;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -190,14 +192,102 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             ->throw();
     }
 
+    /**
+     * Refresh the account's calendars from Graph.
+     *
+     * Graph has no CalendarList as such; `/me/calendars` is the equivalent, and
+     * `canEdit` stands in for Google's access role.
+     */
+    public function syncCalendarList(IntegrationAccount $account): int
+    {
+        $this->ensureValidToken($account);
+
+        $seen = [];
+        $url = self::GRAPH_BASE.'/me/calendars?$select=id,name,color,hexColor,isDefaultCalendar,canEdit,owner&$top=100';
+
+        do {
+            $response = Http::withToken($account->access_token)->get($url)->throw()->json();
+
+            foreach (($response['value'] ?? []) as $entry) {
+                if (empty($entry['id'])) {
+                    continue;
+                }
+
+                $source = CalendarSource::query()->firstOrNew([
+                    'integration_account_id' => $account->id,
+                    'external_id' => $entry['id'],
+                ]);
+
+                $source->fill([
+                    'workspace_id' => $account->workspace_id,
+                    'name' => $entry['name'] ?? $entry['id'],
+                    'color' => $entry['hexColor'] ?: null,
+                    // Graph reports a boolean rather than a role, so it is mapped
+                    // onto the same vocabulary the rest of the app already uses.
+                    'access_role' => ($entry['canEdit'] ?? true) ? 'writer' : 'reader',
+                    'is_primary' => (bool) ($entry['isDefaultCalendar'] ?? false),
+                ]);
+
+                // The user's choice of what to pull is only seeded on first
+                // sight, never re-imposed by a later refresh.
+                if (! $source->exists) {
+                    $source->is_selected = (bool) ($entry['isDefaultCalendar'] ?? false);
+                }
+
+                $source->save();
+                $seen[] = $source->id;
+            }
+
+            $url = $response['@odata.nextLink'] ?? null;
+        } while ($url);
+
+        CalendarSource::query()
+            ->where('integration_account_id', $account->id)
+            ->when($seen, fn ($q) => $q->whereNotIn('id', $seen))
+            ->delete();
+
+        $this->ensureWriteTarget($account);
+
+        return count($seen);
+    }
+
     public function syncEvents(IntegrationAccount $account): int
     {
         $this->ensureValidToken($account);
 
-        $persisted = 0;
-        $url = $account->sync_cursor
-            ?: self::GRAPH_BASE.'/me/calendar/events/delta?$select=id,subject,bodyPreview,location,start,end,attendees,isCancelled,isAllDay,recurrence,seriesMasterId,organizer,webLink,onlineMeeting';
+        if (! $account->calendarSources()->exists()) {
+            $this->syncCalendarList($account);
+        }
 
+        $persisted = 0;
+
+        foreach ($account->calendarSources()->selected()->get() as $source) {
+            // One calendar failing must not stop the others being pulled.
+            try {
+                $persisted += $this->pullEvents($account, $source);
+            } catch (RequestException $e) {
+                $source->forceFill([
+                    'last_error' => Str::limit($e->getMessage(), 1000),
+                ])->save();
+            }
+        }
+
+        $account->forceFill([
+            'last_synced_at' => now(),
+            'last_error' => null,
+        ])->save();
+
+        return $persisted;
+    }
+
+    /**
+     * Walk one calendar's delta feed. The delta link is stored per calendar —
+     * a link from one calendar means nothing to another.
+     */
+    protected function pullEvents(IntegrationAccount $account, CalendarSource $source): int
+    {
+        $persisted = 0;
+        $url = $source->sync_cursor ?: $this->deltaUrl($source);
         $deltaLink = null;
 
         do {
@@ -208,9 +298,10 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                     continue;
                 }
 
-                if (! empty($event['isCancelled']) || ($event['@removed']['reason'] ?? null) === 'changed') {
+                if (! empty($event['isCancelled']) || isset($event['@removed'])) {
                     CalendarEvent::query()
                         ->where('integration_account_id', $account->id)
+                        ->where('calendar_source_id', $source->id)
                         ->where('external_id', $event['id'])
                         ->delete();
 
@@ -220,8 +311,12 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                 // meeting_id is deliberately absent: it is the link Cadence owns,
                 // and must survive a sync rewriting the row.
                 CalendarEvent::query()->updateOrCreate(
-                    ['integration_account_id' => $account->id, 'external_id' => $event['id']],
-                    $this->eventAttributes($account, $event),
+                    [
+                        'integration_account_id' => $account->id,
+                        'calendar_source_id' => $source->id,
+                        'external_id' => $event['id'],
+                    ],
+                    $this->eventAttributes($account, $event, $source),
                 );
 
                 $persisted++;
@@ -231,13 +326,19 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             $deltaLink = $response['@odata.deltaLink'] ?? $deltaLink;
         } while ($url);
 
-        $account->forceFill([
+        $source->forceFill([
             'last_synced_at' => now(),
-            'sync_cursor' => $deltaLink ?: $account->sync_cursor,
+            'sync_cursor' => $deltaLink ?: $source->sync_cursor,
             'last_error' => null,
         ])->save();
 
         return $persisted;
+    }
+
+    protected function deltaUrl(CalendarSource $source): string
+    {
+        return self::GRAPH_BASE.'/me/calendars/'.rawurlencode($source->external_id)
+            .'/events/delta?$select=id,subject,bodyPreview,location,start,end,attendees,isCancelled,isAllDay,recurrence,seriesMasterId,organizer,webLink,onlineMeeting,responseStatus';
     }
 
     /**
@@ -246,10 +347,11 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
      * @param  array<string, mixed>  $event
      * @return array<string, mixed>
      */
-    protected function eventAttributes(IntegrationAccount $account, array $event): array
+    protected function eventAttributes(IntegrationAccount $account, array $event, ?CalendarSource $source = null): array
     {
         return [
             'workspace_id' => $account->workspace_id,
+            'calendar_source_id' => $source?->id,
             'title' => $event['subject'] ?? '(no title)',
             'description' => $event['bodyPreview'] ?? null,
             'location' => $event['location']['displayName'] ?? null,
@@ -259,6 +361,9 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             'recurrence' => isset($event['recurrence']) ? [$event['recurrence']] : null,
             'recurring_event_id' => $event['seriesMasterId'] ?? null,
             'organizer_email' => $event['organizer']['emailAddress']['address'] ?? null,
+            // Graph reports the account's own RSVP on the event itself rather
+            // than hiding it among the attendees.
+            'response_status' => $event['responseStatus']['response'] ?? null,
             'html_link' => $event['webLink'] ?? null,
             'conference_url' => $event['onlineMeeting']['joinUrl'] ?? null,
             'starts_at' => isset($event['start']['dateTime'])
@@ -284,16 +389,22 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
     {
         $this->ensureValidToken($account);
 
+        $target = $this->writeTarget($account);
+
         $response = Http::withToken($account->access_token)
-            ->post(self::GRAPH_BASE.'/me/events', $this->meetingPayload($meeting))
+            ->post($this->eventsEndpoint($target), $this->meetingPayload($meeting))
             ->throw()
             ->json();
 
         $this->captureConferenceUrl($meeting, $response);
 
         return CalendarEvent::query()->updateOrCreate(
-            ['integration_account_id' => $account->id, 'external_id' => $response['id']],
-            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id],
+            [
+                'integration_account_id' => $account->id,
+                'calendar_source_id' => $target?->id,
+                'external_id' => $response['id'],
+            ],
+            $this->eventAttributes($account, $response, $target) + ['meeting_id' => $meeting->id],
         );
     }
 
@@ -301,15 +412,18 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
     {
         $this->ensureValidToken($account);
 
+        // Graph addresses an event by id under /me/events regardless of which
+        // calendar holds it, so no calendar needs naming here.
         $response = Http::withToken($account->access_token)
-            ->patch(self::GRAPH_BASE.'/me/events/'.$event->external_id, $this->meetingPayload($meeting))
+            ->patch(self::GRAPH_BASE.'/me/events/'.rawurlencode($event->external_id), $this->meetingPayload($meeting))
             ->throw()
             ->json();
 
         $this->captureConferenceUrl($meeting, $response);
 
         $event->forceFill(
-            $this->eventAttributes($account, $response) + ['meeting_id' => $meeting->id]
+            $this->eventAttributes($account, $response, $event->calendarSource)
+                + ['meeting_id' => $meeting->id]
         )->save();
 
         return $event;
@@ -338,7 +452,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
         $this->ensureValidToken($account);
 
         $response = Http::withToken($account->access_token)
-            ->delete(self::GRAPH_BASE.'/me/events/'.$event->external_id);
+            ->delete(self::GRAPH_BASE.'/me/events/'.rawurlencode($event->external_id));
 
         // Already gone upstream is the outcome we were after.
         if (! $response->successful() && ! in_array($response->status(), [404, 410], true)) {
@@ -348,19 +462,89 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
         $event->delete();
     }
 
-    public function watchCalendar(IntegrationAccount $account): void
+    public function watchCalendar(IntegrationAccount $account, CalendarSource $source): void
     {
         $this->ensureValidToken($account);
 
-        Http::withToken($account->access_token)
+        // Graph caps a calendar subscription at roughly three days, so this is
+        // re-run on a schedule rather than once at connect time.
+        $expiresAt = now()->addDays(2);
+
+        $response = Http::withToken($account->access_token)
             ->post(self::GRAPH_BASE.'/subscriptions', [
                 'changeType' => 'created,updated,deleted',
                 'notificationUrl' => config('integrations.microsoft.webhook_url'),
-                'resource' => '/me/events',
-                'expirationDateTime' => now()->addDays(2)->toIso8601String(),
-                'clientState' => $this->registerSubscriptionSecret($account, 'graph_calendar_token_hash'),
+                'resource' => "/me/calendars/{$source->external_id}/events",
+                'expirationDateTime' => $expiresAt->toIso8601String(),
+                'clientState' => $this->registerCalendarSecret($source),
             ])
-            ->throw();
+            ->throw()
+            ->json();
+
+        $source->forceFill([
+            'watch_channel_id' => $response['id'] ?? null,
+            'watch_resource_id' => $response['resource'] ?? null,
+            'watch_expires_at' => isset($response['expirationDateTime'])
+                ? CarbonImmutable::parse($response['expirationDateTime'])
+                : $expiresAt,
+        ])->save();
+    }
+
+    protected function eventsEndpoint(?CalendarSource $target): string
+    {
+        return $target
+            ? self::GRAPH_BASE.'/me/calendars/'.rawurlencode($target->external_id).'/events'
+            : self::GRAPH_BASE.'/me/events';
+    }
+
+    /**
+     * The calendar meetings are written to, discovering the list first if this
+     * account has never had one.
+     */
+    protected function writeTarget(IntegrationAccount $account): ?CalendarSource
+    {
+        if (! $account->calendarSources()->exists()) {
+            $this->syncCalendarList($account);
+            // The discovery just wrote rows the account may already hold a
+            // stale (empty) copy of; dropping it forces a re-read.
+            $account->unsetRelation('calendarSources');
+        }
+
+        return $account->writeTargetCalendar();
+    }
+
+    /**
+     * Make sure exactly one calendar is marked as the write target, so a push
+     * never has to guess. Left alone once the user has chosen one.
+     */
+    protected function ensureWriteTarget(IntegrationAccount $account): void
+    {
+        if ($account->calendarSources()->where('is_write_target', true)->exists()) {
+            return;
+        }
+
+        $default = $account->calendarSources()->where('is_primary', true)->first()
+            ?? $account->calendarSources()
+                ->whereIn('access_role', CalendarSource::WRITABLE_ROLES)
+                ->first();
+
+        // Also read back, or a meeting pushed here would never return on the
+        // next sync and the calendar page would look like it had been lost.
+        $default?->forceFill(['is_write_target' => true, 'is_selected' => true])->save();
+    }
+
+    /**
+     * Mint the clientState for a calendar subscription and keep only its hash,
+     * so a leaked row cannot be replayed against the webhook. Shaped
+     * `<sourceId>.<secret>`: the id selects the row, the secret authorises.
+     */
+    protected function registerCalendarSecret(CalendarSource $source): string
+    {
+        $secret = Str::random(48);
+
+        $source->forceFill(['watch_channel_token_hash' => hash('sha256', $secret)])->save();
+
+        return $source->id.'.'.$secret;
     }
 
     protected function meetingPayload(Meeting $meeting): array
@@ -455,7 +639,11 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
      * has to be a secret. The account id is carried alongside purely to find the
      * row — it is sequential and guessable, so it is never sufficient on its own.
      *
-     * @param  'graph_inbox_token_hash'|'graph_calendar_token_hash'  $key
+     * Only the inbox subscription lives on the account. Calendar subscriptions
+     * are per calendar and keep their secret on the calendar_sources row, via
+     * registerCalendarSecret.
+     *
+     * @param  'graph_inbox_token_hash'  $key
      */
     protected function registerSubscriptionSecret(IntegrationAccount $account, string $key): string
     {

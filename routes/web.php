@@ -78,6 +78,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('goals', [GoalController::class, 'index'])->name('goals.index');
     Route::post('goals', [GoalController::class, 'store'])->name('goals.store');
+    Route::get('goals/{goal}', [GoalController::class, 'show'])->name('goals.show');
     Route::patch('goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
     Route::delete('goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
 

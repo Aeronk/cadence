@@ -52,6 +52,17 @@ class CalendarPushTest extends TestCase
         Bus::fake(); // suppress observer auto-dispatch so we control the job invocation
 
         Http::fake([
+            // A push now writes to the account's chosen calendar, so a first
+            // push on an undiscovered account learns the list before writing.
+            'googleapis.com/calendar/v3/users/me/calendarList*' => Http::response([
+                'items' => [[
+                    'id' => 'primary',
+                    'summary' => 'Personal',
+                    'accessRole' => 'owner',
+                    'primary' => true,
+                    'selected' => true,
+                ]],
+            ]),
             'googleapis.com/calendar/v3/calendars/primary/events*' => Http::response([
                 'id' => 'gcal-event-1',
                 'etag' => '"v1"',

@@ -10,7 +10,8 @@ use Illuminate\Console\Command;
 class SyncCalendars extends Command
 {
     protected $signature = 'integrations:sync-calendars
-                            {--account= : Sync a single integration account by id}';
+                            {--account= : Sync a single integration account by id}
+                            {--refresh-list : Re-read the list of calendars on each account first}';
 
     protected $description = 'Pull calendar events for every connected account.';
 
@@ -42,7 +43,10 @@ class SyncCalendars extends Command
 
         foreach ($accounts as $account) {
             // Queued per account so one failing token cannot stall the rest.
-            SyncIntegrationAccountCalendar::dispatch($account->id);
+            SyncIntegrationAccountCalendar::dispatch(
+                $account->id,
+                (bool) $this->option('refresh-list'),
+            );
         }
 
         $this->info("Queued calendar sync for {$accounts->count()} account(s).");
