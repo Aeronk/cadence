@@ -5,6 +5,7 @@ namespace Tests\Feature\Integrations;
 use App\Enums\IntegrationProvider;
 use App\Integrations\IntegrationManager;
 use App\Integrations\Providers\Microsoft\MicrosoftProvider;
+use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Jobs\SyncIntegrationAccountInbox;
 use App\Models\IntegrationAccount;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,28 +29,96 @@ class MicrosoftWebhookTest extends TestCase
             ->assertSee('abc123');
     }
 
-    public function test_notification_dispatches_sync_job_for_matching_account(): void
+    /**
+     * Register a subscription secret the way the provider does, and hand back the
+     * clientState Graph would echo back.
+     */
+    protected function registerSecret(IntegrationAccount $account, string $key, string $secret): string
+    {
+        $account->forceFill([
+            'settings' => array_merge($account->settings ?? [], [
+                $key => hash('sha256', $secret),
+            ]),
+        ])->save();
+
+        return $account->id.'.'.$secret;
+    }
+
+    public function test_notification_dispatches_inbox_sync_for_a_verified_subscription(): void
     {
         Bus::fake();
 
         $account = IntegrationAccount::factory()->provider(IntegrationProvider::Microsoft)->create();
+        $clientState = $this->registerSecret($account, 'graph_inbox_token_hash', 'inbox-secret');
 
         $this->postJson('/integrations/microsoft/webhook', [
-            'value' => [
-                ['clientState' => 'cadence-'.$account->id, 'changeType' => 'created'],
-            ],
+            'value' => [['clientState' => $clientState, 'changeType' => 'created']],
         ])->assertOk();
 
         Bus::assertDispatched(SyncIntegrationAccountInbox::class, fn ($job) => $job->integrationAccountId === $account->id);
     }
 
-    public function test_notification_with_unrecognized_client_state_is_ignored(): void
+    public function test_a_calendar_subscription_dispatches_a_calendar_sync_not_an_inbox_sync(): void
+    {
+        Bus::fake();
+
+        $account = IntegrationAccount::factory()->provider(IntegrationProvider::Microsoft)->create();
+        $clientState = $this->registerSecret($account, 'graph_calendar_token_hash', 'calendar-secret');
+
+        $this->postJson('/integrations/microsoft/webhook', [
+            'value' => [['clientState' => $clientState, 'changeType' => 'updated']],
+        ])->assertOk();
+
+        Bus::assertDispatched(SyncIntegrationAccountCalendar::class, fn ($job) => $job->integrationAccountId === $account->id);
+        Bus::assertNotDispatched(SyncIntegrationAccountInbox::class);
+    }
+
+    /**
+     * The endpoint is public and CSRF-exempt, so a clientState derived from the
+     * account id alone must not be enough to trigger work.
+     */
+    public function test_a_guessable_client_state_is_rejected(): void
+    {
+        Bus::fake();
+
+        $account = IntegrationAccount::factory()->provider(IntegrationProvider::Microsoft)->create();
+        $this->registerSecret($account, 'graph_inbox_token_hash', 'inbox-secret');
+
+        $forgeries = [
+            'cadence-'.$account->id,
+            'cadence-cal-'.$account->id,
+            (string) $account->id,
+            $account->id.'.wrong-secret',
+        ];
+
+        foreach ($forgeries as $forged) {
+            $this->postJson('/integrations/microsoft/webhook', [
+                'value' => [['clientState' => $forged, 'changeType' => 'created']],
+            ])->assertForbidden();
+        }
+
+        Bus::assertNotDispatched(SyncIntegrationAccountInbox::class);
+        Bus::assertNotDispatched(SyncIntegrationAccountCalendar::class);
+    }
+
+    public function test_notification_with_unrecognized_client_state_is_rejected(): void
     {
         Bus::fake();
 
         $this->postJson('/integrations/microsoft/webhook', [
             'value' => [['clientState' => 'someone-else', 'changeType' => 'created']],
-        ])->assertOk();
+        ])->assertForbidden();
+
+        Bus::assertNotDispatched(SyncIntegrationAccountInbox::class);
+    }
+
+    public function test_an_empty_notification_list_is_accepted_as_a_no_op(): void
+    {
+        Bus::fake();
+
+        // Rejecting this would count against the subscription with Graph.
+        $this->postJson('/integrations/microsoft/webhook', ['value' => []])
+            ->assertOk();
 
         Bus::assertNotDispatched(SyncIntegrationAccountInbox::class);
     }

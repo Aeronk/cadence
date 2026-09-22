@@ -398,14 +398,21 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
 
         $channelId = 'cadence-cal-'.$account->id.'-'.Str::random(16);
 
+        // The channel token is the only thing authenticating an inbound
+        // notification, so it has to be a secret rather than something guessable.
+        // The account id is carried alongside it purely to find the row; the
+        // random half is what authorises the request. Only the hash is kept, so a
+        // leaked settings blob cannot be replayed against the webhook.
+        $secret = Str::random(48);
+
         $response = Http::withToken($account->access_token)
             ->post(self::CALENDAR_BASE.'/events/watch', [
                 'id' => $channelId,
                 'type' => 'web_hook',
                 'address' => config('integrations.google.calendar_webhook_url')
                     ?: route('integrations.webhooks.google-calendar'),
-                // Echoed back on every notification; how the account is identified.
-                'token' => 'account='.$account->id,
+                // Echoed back on every notification.
+                'token' => $account->id.'.'.$secret,
             ])
             ->throw()
             ->json();
@@ -413,6 +420,7 @@ class GmailProvider implements CalendarProvider, EmailProvider, OAuthProvider
         $account->forceFill([
             'settings' => array_merge($account->settings ?? [], [
                 'calendar_channel_id' => $channelId,
+                'calendar_channel_token_hash' => hash('sha256', $secret),
                 'calendar_resource_id' => $response['resourceId'] ?? null,
                 'calendar_channel_expires_at' => isset($response['expiration'])
                     ? CarbonImmutable::createFromTimestampMs((int) $response['expiration'])->toIso8601String()

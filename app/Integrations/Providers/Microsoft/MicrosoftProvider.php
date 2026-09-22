@@ -13,6 +13,7 @@ use App\Models\Message;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvider
@@ -184,7 +185,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                 'notificationUrl' => config('integrations.microsoft.webhook_url'),
                 'resource' => '/me/mailFolders(\'Inbox\')/messages',
                 'expirationDateTime' => now()->addDays(2)->toIso8601String(),
-                'clientState' => 'cadence-'.$account->id,
+                'clientState' => $this->registerSubscriptionSecret($account, 'graph_inbox_token_hash'),
             ])
             ->throw();
     }
@@ -357,7 +358,7 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                 'notificationUrl' => config('integrations.microsoft.webhook_url'),
                 'resource' => '/me/events',
                 'expirationDateTime' => now()->addDays(2)->toIso8601String(),
-                'clientState' => 'cadence-cal-'.$account->id,
+                'clientState' => $this->registerSubscriptionSecret($account, 'graph_calendar_token_hash'),
             ])
             ->throw();
     }
@@ -445,6 +446,28 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
             ];
 
         return ['pattern' => $pattern, 'range' => $range];
+    }
+
+    /**
+     * Mint the clientState for a Graph subscription and store only its hash.
+     *
+     * clientState is the only thing authenticating an inbound notification, so it
+     * has to be a secret. The account id is carried alongside purely to find the
+     * row — it is sequential and guessable, so it is never sufficient on its own.
+     *
+     * @param  'graph_inbox_token_hash'|'graph_calendar_token_hash'  $key
+     */
+    protected function registerSubscriptionSecret(IntegrationAccount $account, string $key): string
+    {
+        $secret = Str::random(48);
+
+        $account->forceFill([
+            'settings' => array_merge($account->settings ?? [], [
+                $key => hash('sha256', $secret),
+            ]),
+        ])->save();
+
+        return $account->id.'.'.$secret;
     }
 
     protected function tokenRequest(array $extra): array

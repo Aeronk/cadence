@@ -371,42 +371,136 @@ class GoogleCalendarSyncTest extends TestCase
         Bus::assertDispatchedTimes(SyncIntegrationAccountCalendar::class, 1);
     }
 
-    public function test_the_calendar_webhook_queues_a_sync_for_the_named_account(): void
+    /**
+     * Register a channel secret the way watchCalendar does, and hand back the
+     * plaintext token Google would echo on each notification.
+     */
+    protected function registerChannelSecret(string $secret = 's3cret-channel-value'): string
+    {
+        $this->account->forceFill([
+            'settings' => array_merge($this->account->settings ?? [], [
+                'calendar_channel_id' => 'cadence-cal-'.$this->account->id.'-abc',
+                'calendar_channel_token_hash' => hash('sha256', $secret),
+            ]),
+        ])->save();
+
+        return $this->account->id.'.'.$secret;
+    }
+
+    public function test_watching_a_calendar_sends_a_secret_token_and_stores_only_its_hash(): void
+    {
+        config([
+            'integrations.google.calendar_push_enabled' => true,
+            'integrations.google.calendar_webhook_url' => 'https://example.test/hook',
+        ]);
+
+        Http::fake([
+            'googleapis.com/calendar/v3/calendars/primary/events/watch*' => Http::response([
+                'resourceId' => 'res-1',
+                'expiration' => (string) (now()->addDays(7)->getTimestamp() * 1000),
+            ]),
+        ]);
+
+        $this->provider()->watchCalendar($this->account);
+
+        $sentToken = null;
+        Http::assertSent(function ($request) use (&$sentToken) {
+            $sentToken = $request->data()['token'] ?? null;
+
+            return $sentToken !== null;
+        });
+
+        [$id, $secret] = explode('.', $sentToken, 2);
+        $this->assertSame((string) $this->account->id, $id);
+
+        // The secret must be long enough not to be guessable, and must never be
+        // stored in the clear.
+        $this->assertGreaterThanOrEqual(32, strlen($secret));
+
+        $settings = $this->account->fresh()->settings;
+        $this->assertSame(hash('sha256', $secret), $settings['calendar_channel_token_hash']);
+        $this->assertStringNotContainsString($secret, json_encode($settings));
+    }
+
+    public function test_the_calendar_webhook_queues_a_sync_for_a_verified_channel(): void
     {
         Bus::fake();
 
+        $token = $this->registerChannelSecret();
+
         $this->postJson(route('integrations.webhooks.google-calendar'), [], [
             'X-Goog-Resource-State' => 'exists',
-            'X-Goog-Channel-Token' => 'account='.$this->account->id,
-            'X-Goog-Channel-Id' => 'cadence-cal-1-abc',
+            'X-Goog-Channel-Token' => $token,
+            'X-Goog-Channel-Id' => 'cadence-cal-'.$this->account->id.'-abc',
         ])->assertOk();
 
         Bus::assertDispatched(
             SyncIntegrationAccountCalendar::class,
             fn ($job) => $job->integrationAccountId === $this->account->id,
         );
+
+        $this->assertDatabaseHas('webhook_deliveries', ['signature_verified' => true]);
     }
 
     public function test_the_calendar_webhook_ignores_the_initial_sync_handshake(): void
     {
         Bus::fake();
 
+        $token = $this->registerChannelSecret();
+
         $this->postJson(route('integrations.webhooks.google-calendar'), [], [
             'X-Goog-Resource-State' => 'sync',
-            'X-Goog-Channel-Token' => 'account='.$this->account->id,
+            'X-Goog-Channel-Token' => $token,
         ])->assertOk();
 
         Bus::assertNotDispatched(SyncIntegrationAccountCalendar::class);
     }
 
-    public function test_the_calendar_webhook_rejects_an_unknown_channel_token(): void
+    /**
+     * The route is public and CSRF-exempt, so a guessable token would let anyone
+     * trigger sync jobs for any account. The account id alone must never be
+     * enough.
+     */
+    public function test_the_calendar_webhook_rejects_a_guessable_account_id_token(): void
     {
         Bus::fake();
 
+        $this->registerChannelSecret();
+
+        foreach (['account='.$this->account->id, (string) $this->account->id, $this->account->id.'.', $this->account->id.'.wrong-secret'] as $forged) {
+            $this->postJson(route('integrations.webhooks.google-calendar'), [], [
+                'X-Goog-Resource-State' => 'exists',
+                'X-Goog-Channel-Token' => $forged,
+            ])->assertForbidden();
+        }
+
+        Bus::assertNotDispatched(SyncIntegrationAccountCalendar::class);
+        $this->assertDatabaseMissing('webhook_deliveries', ['signature_verified' => true]);
+    }
+
+    public function test_the_calendar_webhook_rejects_an_account_with_no_registered_channel(): void
+    {
+        Bus::fake();
+
+        // No settings written, so nothing can verify against.
         $this->postJson(route('integrations.webhooks.google-calendar'), [], [
             'X-Goog-Resource-State' => 'exists',
-            'X-Goog-Channel-Token' => 'nonsense',
+            'X-Goog-Channel-Token' => $this->account->id.'.anything',
         ])->assertForbidden();
+
+        Bus::assertNotDispatched(SyncIntegrationAccountCalendar::class);
+    }
+
+    public function test_the_calendar_webhook_rejects_a_malformed_or_unknown_token(): void
+    {
+        Bus::fake();
+
+        foreach (['', 'nonsense', 'abc.def', '999999.secret'] as $forged) {
+            $this->postJson(route('integrations.webhooks.google-calendar'), [], [
+                'X-Goog-Resource-State' => 'exists',
+                'X-Goog-Channel-Token' => $forged,
+            ])->assertForbidden();
+        }
 
         Bus::assertNotDispatched(SyncIntegrationAccountCalendar::class);
     }

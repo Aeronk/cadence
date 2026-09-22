@@ -65,24 +65,41 @@ class WebhookController extends Controller
             return response($token, 200, ['Content-Type' => 'text/plain']);
         }
 
+        $notifications = (array) ($request->input('value') ?? []);
+        $verified = 0;
+
+        foreach ($notifications as $notification) {
+            $match = $this->authenticateGraphSubscription(
+                (string) ($notification['clientState'] ?? '')
+            );
+
+            if (! $match) {
+                continue;
+            }
+
+            [$account, $kind] = $match;
+            $verified++;
+
+            // Previously every notification queued an inbox sync, so calendar
+            // subscriptions refreshed the wrong thing.
+            match ($kind) {
+                'graph_calendar_token_hash' => SyncIntegrationAccountCalendar::dispatch($account->id),
+                default => SyncIntegrationAccountInbox::dispatch($account->id),
+            };
+        }
+
         $delivery = WebhookDelivery::create([
             'provider' => IntegrationProvider::Microsoft->value,
             'event_type' => 'graph.notification',
             'headers' => $request->headers->all(),
             'payload' => $request->all(),
-            'signature_verified' => true,
+            'signature_verified' => $verified > 0,
         ]);
 
-        foreach (($request->input('value') ?? []) as $notification) {
-            $clientState = $notification['clientState'] ?? '';
-            if (! str_starts_with($clientState, 'cadence-')) {
-                continue;
-            }
-            $accountId = (int) substr($clientState, 8);
+        if ($notifications !== [] && $verified === 0) {
+            $delivery->forceFill(['error' => 'No notification carried a verifiable clientState.'])->save();
 
-            if ($accountId > 0) {
-                SyncIntegrationAccountInbox::dispatch($accountId);
-            }
+            return response('Forbidden', 403);
         }
 
         $delivery->forceFill(['processed_at' => now()])->save();
@@ -93,20 +110,20 @@ class WebhookController extends Controller
     /**
      * Google Calendar push notification.
      *
-     * The body is empty; everything arrives in headers. `X-Goog-Channel-Token` is
-     * the value handed to events/watch, which is how the account is identified.
+     * The body is empty; everything arrives in headers. `X-Goog-Channel-Token`
+     * carries the secret minted in watchCalendar and is the only thing
+     * authenticating the caller, since this route is public and CSRF-exempt.
      * The first notification after subscribing is a `sync` handshake and carries
      * no change, so it is acknowledged without work.
      */
     public function googleCalendar(Request $request): SymfonyResponse
     {
         $state = (string) $request->header('X-Goog-Resource-State', '');
-        $token = (string) $request->header('X-Goog-Channel-Token', '');
         $channelId = (string) $request->header('X-Goog-Channel-Id', '');
 
-        $accountId = str_starts_with($token, 'account=')
-            ? (int) substr($token, 8)
-            : 0;
+        $account = $this->authenticateCalendarChannel(
+            (string) $request->header('X-Goog-Channel-Token', '')
+        );
 
         $delivery = WebhookDelivery::create([
             'provider' => IntegrationProvider::Gmail->value,
@@ -114,23 +131,96 @@ class WebhookController extends Controller
             'external_id' => $channelId ?: null,
             'headers' => $request->headers->all(),
             'payload' => $request->all(),
-            // The channel token is the shared secret; an unknown one is rejected.
-            'signature_verified' => $accountId > 0,
+            'signature_verified' => $account !== null,
         ]);
 
-        if ($accountId <= 0) {
-            $delivery->forceFill(['error' => 'Unrecognised channel token.'])->save();
+        if (! $account) {
+            $delivery->forceFill(['error' => 'Channel token did not verify.'])->save();
 
+            // Deliberately uniform: never reveal whether the account existed.
             return response('Forbidden', 403);
         }
 
         if ($state !== 'sync') {
-            SyncIntegrationAccountCalendar::dispatch($accountId);
+            SyncIntegrationAccountCalendar::dispatch($account->id);
         }
 
         $delivery->forceFill(['processed_at' => now()])->save();
 
         return response('OK');
+    }
+
+    /**
+     * Resolve a calendar channel token to its account, or null if it does not
+     * verify.
+     *
+     * The token is `<accountId>.<secret>`. The id only selects the row — it is
+     * sequential and guessable, so it is never sufficient on its own. The secret
+     * is compared against the stored hash in constant time; anything else would
+     * let an unauthenticated caller trigger sync jobs for arbitrary accounts.
+     */
+    protected function authenticateCalendarChannel(string $token): ?IntegrationAccount
+    {
+        if (! str_contains($token, '.')) {
+            return null;
+        }
+
+        [$accountId, $secret] = explode('.', $token, 2);
+
+        if (! ctype_digit($accountId) || $secret === '') {
+            return null;
+        }
+
+        $account = IntegrationAccount::query()->find((int) $accountId);
+        $expected = $account?->settings['calendar_channel_token_hash'] ?? null;
+
+        if (! is_string($expected) || $expected === '') {
+            return null;
+        }
+
+        return hash_equals($expected, hash('sha256', $secret))
+            ? $account
+            : null;
+    }
+
+    /**
+     * Resolve a Graph subscription clientState to its account and which
+     * subscription it belongs to, or null if it does not verify.
+     *
+     * Same shape as the calendar channel token: `<accountId>.<secret>`, where only
+     * the secret authorises. The secret is compared in constant time.
+     *
+     * @return array{0: IntegrationAccount, 1: string}|null
+     */
+    protected function authenticateGraphSubscription(string $clientState): ?array
+    {
+        if (! str_contains($clientState, '.')) {
+            return null;
+        }
+
+        [$accountId, $secret] = explode('.', $clientState, 2);
+
+        if (! ctype_digit($accountId) || $secret === '') {
+            return null;
+        }
+
+        $account = IntegrationAccount::query()->find((int) $accountId);
+
+        if (! $account) {
+            return null;
+        }
+
+        $presented = hash('sha256', $secret);
+
+        foreach (['graph_inbox_token_hash', 'graph_calendar_token_hash'] as $key) {
+            $expected = $account->settings[$key] ?? null;
+
+            if (is_string($expected) && $expected !== '' && hash_equals($expected, $presented)) {
+                return [$account, $key];
+            }
+        }
+
+        return null;
     }
 
     /**
