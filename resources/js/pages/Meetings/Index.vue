@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Calendar, MapPin, Plus, Video, Users2, BellRing } from 'lucide-vue-next';
+import { BellRing, Calendar, FolderKanban, MapPin, Plus, Users2, Video } from 'lucide-vue-next';
 import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import RichEditor from '@/components/RichEditor.vue';
+import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import meetingsRoutes from '@/routes/meetings';
 
 type Meeting = {
@@ -32,7 +33,7 @@ type Meeting = {
     project: { id: number; title: string } | null;
 };
 
-defineProps<{ meetings: Meeting[] }>();
+defineProps<{ meetings: Meeting[]; projects: ProjectOption[] }>();
 
 const dialogOpen = ref(false);
 const form = useForm({
@@ -45,6 +46,9 @@ const form = useForm({
     meeting_type: 'online' as 'physical' | 'online' | 'hybrid',
     channel: '',
     reminder_minutes_before: 15 as number | null,
+    // The column and the validation already existed; the form never offered it,
+    // so no meeting could actually be filed under a project.
+    project_id: null as number | null,
 });
 
 function submit() {
@@ -168,6 +172,14 @@ const typeIcon = (t: string) => (t === 'physical' ? MapPin : t === 'hybrid' ? Us
                                 <RichEditor v-model="form.description" placeholder="Topics, links, attendees…" />
                             </div>
 
+                            <ProjectSelect
+                                id="meeting-project"
+                                v-model="form.project_id"
+                                :projects="projects"
+                                :error="form.errors.project_id"
+                                hint="Shows this meeting on the project's Related tab."
+                            />
+
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">Schedule</Button>
                             </DialogFooter>
@@ -203,6 +215,12 @@ const typeIcon = (t: string) => (t === 'physical' ? MapPin : t === 'hybrid' ? Us
                                     class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-primary"
                                 >
                                     {{ meeting.channel.replace('_', ' ') }}
+                                </span>
+                                <span
+                                    v-if="meeting.project"
+                                    class="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px]"
+                                >
+                                    <FolderKanban class="h-2.5 w-2.5" /> {{ meeting.project.title }}
                                 </span>
                             </div>
                             <p class="mt-1 text-sm text-muted-foreground">

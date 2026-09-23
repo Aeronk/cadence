@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Plus, Pin, Trash2 } from 'lucide-vue-next';
+import { FolderKanban, Pin, Plus, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import RichEditor from '@/components/RichEditor.vue';
+import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import notesRoutes from '@/routes/notes';
 
 type Note = {
@@ -15,9 +16,10 @@ type Note = {
     color: string;
     is_pinned: boolean;
     updated_at: string;
+    project: { id: number; title: string } | null;
 };
 
-defineProps<{ notes: Note[] }>();
+defineProps<{ notes: Note[]; projects: ProjectOption[] }>();
 
 const COLORS = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange', 'gray'] as const;
 type NoteColor = (typeof COLORS)[number];
@@ -43,10 +45,16 @@ const colorCard: Record<NoteColor, string> = {
 };
 
 const showForm = ref(false);
-const form = useForm<{ title: string; body: string; color: NoteColor }>({
+const form = useForm<{
+    title: string;
+    body: string;
+    color: NoteColor;
+    project_id: number | null;
+}>({
     title: '',
     body: '',
     color: 'yellow',
+    project_id: null,
 });
 
 function add() {
@@ -98,6 +106,13 @@ const cardClass = (color: string) =>
             >
                 <Input v-model="form.title" placeholder="Title" required />
                 <RichEditor v-model="form.body" placeholder="Body…" min-height="6rem" />
+                <ProjectSelect
+                    id="note-project"
+                    v-model="form.project_id"
+                    :projects="projects"
+                    :error="form.errors.project_id"
+                    hint="Notes stay private to you, even when filed under a shared project."
+                />
                 <div class="flex items-center justify-between">
                     <div class="flex gap-2">
                         <button
@@ -154,6 +169,14 @@ const cardClass = (color: string) =>
                             </button>
                         </div>
                     </div>
+
+                    <a
+                        v-if="note.project"
+                        :href="`/projects/${note.project.id}`"
+                        class="mb-2 inline-flex w-fit items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[11px] hover:underline dark:bg-white/10"
+                    >
+                        <FolderKanban class="h-3 w-3" /> {{ note.project.title }}
+                    </a>
 
                     <div
                         class="prose prose-sm line-clamp-6 max-w-none flex-1 text-sm dark:prose-invert"

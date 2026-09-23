@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Todos;
 
 use App\Enums\Category;
+use App\Http\Controllers\Concerns\OffersProjectOptions;
 use App\Http\Controllers\Controller;
 use App\Models\Todo;
 use Illuminate\Http\RedirectResponse;
@@ -13,6 +14,8 @@ use Inertia\Response;
 
 class TodoController extends Controller
 {
+    use OffersProjectOptions;
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Todo::class);
@@ -23,6 +26,7 @@ class TodoController extends Controller
         $todos = Todo::query()
             ->where('user_id', $user->id)
             ->when($workspace, fn ($q) => $q->forWorkspace($workspace))
+            ->with('project:id,title')
             ->orderBy('completed_at')
             ->orderBy('position')
             ->orderByDesc('created_at')
@@ -31,6 +35,7 @@ class TodoController extends Controller
         return Inertia::render('Todos/Index', [
             'todos' => $todos,
             'categories' => Category::options(),
+            'projects' => $this->projectOptions($request),
         ]);
     }
 

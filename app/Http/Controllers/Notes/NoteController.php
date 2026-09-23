@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Notes;
 
+use App\Http\Controllers\Concerns\OffersProjectOptions;
 use App\Http\Controllers\Controller;
 use App\Models\Note;
 use Illuminate\Http\RedirectResponse;
@@ -12,6 +13,8 @@ use Inertia\Response;
 
 class NoteController extends Controller
 {
+    use OffersProjectOptions;
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Note::class);
@@ -22,11 +25,15 @@ class NoteController extends Controller
         $notes = Note::query()
             ->where('user_id', $user->id)
             ->when($workspace, fn ($q) => $q->forWorkspace($workspace))
+            ->with('project:id,title')
             ->orderByDesc('is_pinned')
             ->orderByDesc('updated_at')
             ->get();
 
-        return Inertia::render('Notes/Index', ['notes' => $notes]);
+        return Inertia::render('Notes/Index', [
+            'notes' => $notes,
+            'projects' => $this->projectOptions($request),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

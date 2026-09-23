@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Trips;
 
+use App\Http\Controllers\Concerns\OffersProjectOptions;
 use App\Http\Controllers\Controller;
 use App\Models\Trip;
 use App\Models\TripChecklistItem;
@@ -14,6 +15,8 @@ use Inertia\Response;
 
 class TripController extends Controller
 {
+    use OffersProjectOptions;
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Trip::class);
@@ -25,10 +28,14 @@ class TripController extends Controller
             ->forWorkspace($workspace)
             ->where('user_id', $user->id)
             ->orderByDesc('departs_at')
+            ->with('project:id,title')
             ->get(['id', 'name', 'purpose', 'destination_country', 'destination_city',
-                'departs_at', 'returns_at', 'status']);
+                'departs_at', 'returns_at', 'status', 'project_id']);
 
-        return Inertia::render('Trips/Index', ['trips' => $trips]);
+        return Inertia::render('Trips/Index', [
+            'trips' => $trips,
+            'projects' => $this->projectOptions($request),
+        ]);
     }
 
     public function show(Trip $trip): Response

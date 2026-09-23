@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Flame, Plus, Trash2 } from 'lucide-vue-next';
+import { Flame, FolderKanban, Plus, Trash2 } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import todosRoutes from '@/routes/todos';
 
 type Priority = 'low' | 'medium' | 'high';
@@ -17,10 +18,15 @@ type Todo = {
     category: string | null;
     due_date: string | null;
     completed_at: string | null;
+    project: { id: number; title: string } | null;
 };
 type CategoryOption = { value: string; label: string; color: string };
 
-const props = defineProps<{ todos: Todo[]; categories: CategoryOption[] }>();
+const props = defineProps<{
+    todos: Todo[];
+    categories: CategoryOption[];
+    projects: ProjectOption[];
+}>();
 
 const form = useForm<{
     title: string;
@@ -28,12 +34,14 @@ const form = useForm<{
     priority: Priority;
     category: string;
     due_date: string;
+    project_id: number | null;
 }>({
     title: '',
     description: '',
     priority: 'medium',
     category: '',
     due_date: '',
+    project_id: null,
 });
 
 const PRIORITY_ACCENT: Record<Priority, string> = {
@@ -150,6 +158,12 @@ function remove(todo: Todo) {
                             {{ c.label }}
                         </option>
                     </select>
+                    <ProjectSelect
+                        id="todo-project"
+                        v-model="form.project_id"
+                        :projects="projects"
+                        compact
+                    />
                     <Input v-model="form.due_date" type="date" class="w-[10rem]" title="Due date" />
                     <Button type="submit" :disabled="form.processing">
                         <Plus class="h-4 w-4" />
@@ -201,6 +215,13 @@ function remove(todo: Todo) {
                                 {{ todo.description }}
                             </p>
                             <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                <a
+                                    v-if="todo.project"
+                                    :href="`/projects/${todo.project.id}`"
+                                    class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] hover:underline"
+                                >
+                                    <FolderKanban class="h-2.5 w-2.5" /> {{ todo.project.title }}
+                                </a>
                                 <span
                                     v-if="todo.category"
                                     class="rounded-full px-2 py-0.5 text-[10px] capitalize"

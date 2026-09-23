@@ -14,6 +14,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 
 type Trip = {
     id: number;
@@ -24,9 +25,10 @@ type Trip = {
     departs_at: string;
     returns_at: string;
     status: string;
+    project: { id: number; title: string } | null;
 };
 
-defineProps<{ trips: Trip[] }>();
+defineProps<{ trips: Trip[]; projects: ProjectOption[] }>();
 
 const dialogOpen = ref(false);
 const form = useForm({
@@ -37,6 +39,7 @@ const form = useForm({
     departs_at: '',
     returns_at: '',
     notes: '',
+    project_id: null as number | null,
 });
 
 function submit() {
@@ -113,6 +116,14 @@ const statusPill = (s: string) => ({
                                     <Input id="returns_at" v-model="form.returns_at" type="datetime-local" required />
                                 </div>
                             </div>
+                            <ProjectSelect
+                                id="trip-project"
+                                v-model="form.project_id"
+                                :projects="projects"
+                                :error="form.errors.project_id"
+                                hint="Filing travel under a project shows it on that project's page."
+                            />
+
                             <DialogFooter>
                                 <Button type="submit" :disabled="form.processing">Create</Button>
                             </DialogFooter>

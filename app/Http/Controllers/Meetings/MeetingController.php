@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Meetings;
 
+use App\Http\Controllers\Concerns\OffersProjectOptions;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMeetingRequest;
 use App\Models\ActivityLog;
@@ -15,6 +16,8 @@ use Inertia\Response;
 
 class MeetingController extends Controller
 {
+    use OffersProjectOptions;
+
     public function index(Request $request): Response
     {
         $this->authorize('viewAny', Meeting::class);
@@ -34,7 +37,10 @@ class MeetingController extends Controller
             ->orderBy('starts_at')
             ->get();
 
-        return Inertia::render('Meetings/Index', ['meetings' => $meetings]);
+        return Inertia::render('Meetings/Index', [
+            'meetings' => $meetings,
+            'projects' => $this->projectOptions($request),
+        ]);
     }
 
     public function show(Meeting $meeting): Response
