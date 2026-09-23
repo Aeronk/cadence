@@ -10,6 +10,7 @@ import {
 } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { formatDate } from '@/lib/dates';
 
 type Range = { starts_at: string; ends_at: string; days: number };
 type TaskStatus = { open: number; completed: number; overdue: number };
@@ -94,7 +95,7 @@ const categoryPill = (c: string) => ({
             <header>
                 <h1 class="text-2xl font-bold">Analytics</h1>
                 <p class="text-sm text-muted-foreground">
-                    Last 30 days · {{ range.starts_at }} → {{ range.ends_at }}
+                    Last 30 days · {{ formatDate(range.starts_at) }} → {{ formatDate(range.ends_at) }}
                 </p>
             </header>
 

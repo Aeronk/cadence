@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import RichEditor from '@/components/RichEditor.vue';
 import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import notesRoutes from '@/routes/notes';
+import { formatRelative } from '@/lib/dates';
 
 type Note = {
     id: number;
@@ -199,7 +200,7 @@ const cardClass = (color: string) =>
                             />
                         </div>
                         <span class="text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                            {{ new Date(note.updated_at).toLocaleDateString() }}
+                            {{ formatRelative(note.updated_at) }}
                         </span>
                     </div>
                 </div>

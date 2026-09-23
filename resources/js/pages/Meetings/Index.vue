@@ -17,6 +17,7 @@ import {
 import RichEditor from '@/components/RichEditor.vue';
 import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import meetingsRoutes from '@/routes/meetings';
+import { formatDateTime } from '@/lib/dates';
 
 type Meeting = {
     id: number;
@@ -224,7 +225,7 @@ const typeIcon = (t: string) => (t === 'physical' ? MapPin : t === 'hybrid' ? Us
                                 </span>
                             </div>
                             <p class="mt-1 text-sm text-muted-foreground">
-                                {{ new Date(meeting.starts_at).toLocaleString() }}
+                                {{ formatDateTime(meeting.starts_at) }}
                             </p>
                             <p v-if="meeting.location" class="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                                 <MapPin class="h-3 w-3" /> {{ meeting.location }}

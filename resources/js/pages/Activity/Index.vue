@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import activityRoutes from '@/routes/activity';
+import { formatRelative } from '@/lib/dates';
 
 type ActivityEntry = {
     id: number;
@@ -29,7 +30,7 @@ defineProps<{ activity: ActivityEntry[] }>();
                 <li v-for="entry in activity" :key="entry.id" class="rounded-lg border p-3 text-sm">
                     <p>{{ entry.description }}</p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                        {{ new Date(entry.created_at).toLocaleString() }}
+                        {{ formatRelative(entry.created_at) }}
                     </p>
                 </li>
             </ol>

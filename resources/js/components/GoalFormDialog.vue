@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,6 +38,15 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
+
+/**
+ * The field is posted as `progress`, so that is the key the server reports the
+ * error under — but useForm reserves `progress` for upload state, so the local
+ * field is `own_progress` and the typed errors object never knows about it.
+ */
+const progressError = computed(
+    () => (form.errors as Record<string, string | undefined>).progress,
+);
 
 const form = useForm({
     type: 'goal' as GoalType,
@@ -212,7 +221,7 @@ const availableParents = () =>
                         <p v-if="goal && !goal.is_leaf" class="mt-1 text-[11px] text-muted-foreground">
                             Counted from the {{ goal.milestones_count }} milestone(s) and sub-goals below.
                         </p>
-                        <InputError :message="form.errors.progress" />
+                        <InputError :message="progressError" />
                     </div>
                 </div>
 

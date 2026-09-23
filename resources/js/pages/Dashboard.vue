@@ -16,6 +16,7 @@ import {
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { dashboard } from '@/routes';
+import { formatDate, formatDueDate, formatRelative, formatTime, formatWeekday } from '@/lib/dates';
 
 type Stats = {
     projects_count: number;
@@ -102,7 +103,7 @@ const briefingLines = computed(() => {
         }),
     );
     b.projects.forEach((p) =>
-        lines.push({ icon: '📁', text: `Project "${p.title}" due ${new Date(p.due_date).toLocaleDateString()}` }),
+        lines.push({ icon: '📁', text: `Project "${p.title}" due ${formatDate(p.due_date)}` }),
     );
     return lines;
 });
@@ -426,7 +427,7 @@ defineOptions({
                 >
                     <span class="truncate">{{ task.title }}</span>
                     <span v-if="task.due_date" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">
-                        {{ task.due_date }}
+                        {{ formatDueDate(task.due_date) }}
                     </span>
                 </Link>
             </section>
@@ -454,7 +455,7 @@ defineOptions({
                 >
                     <span class="truncate">{{ meeting.title }}</span>
                     <span class="shrink-0 text-xs text-muted-foreground">
-                        {{ new Date(meeting.starts_at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) }}
+                        {{ formatWeekday(meeting.starts_at) }}, {{ formatTime(meeting.starts_at) }}
                     </span>
                 </Link>
             </section>
@@ -567,7 +568,7 @@ defineOptions({
                     >
                         <p class="text-sm">{{ entry.description }}</p>
                         <p class="mt-0.5 text-[11px] text-muted-foreground">
-                            {{ entry.actor?.name ?? 'System' }} · {{ new Date(entry.created_at).toLocaleString() }}
+                            {{ entry.actor?.name ?? 'System' }} · {{ formatRelative(entry.created_at) }}
                         </p>
                     </div>
                 </div>
@@ -590,7 +591,7 @@ defineOptions({
             >
                 <p class="text-sm">{{ entry.description }}</p>
                 <p class="mt-1 text-xs text-muted-foreground">
-                    {{ new Date(entry.created_at).toLocaleString() }}
+                    {{ formatRelative(entry.created_at) }}
                 </p>
             </div>
         </section>

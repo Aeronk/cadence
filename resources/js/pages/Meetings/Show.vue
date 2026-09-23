@@ -15,6 +15,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import meetingsRoutes from '@/routes/meetings';
+import { formatDateTime, formatTime } from '@/lib/dates';
 
 type Meeting = {
     id: number;
@@ -99,7 +100,7 @@ function cancelMeeting() {
                     </div>
                     <p class="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                         <Calendar class="h-4 w-4" />
-                        {{ new Date(meeting.starts_at).toLocaleString() }} — {{ new Date(meeting.ends_at).toLocaleTimeString() }}
+                        {{ formatDateTime(meeting.starts_at) }} — {{ formatTime(meeting.ends_at) }}
                     </p>
                 </div>
 

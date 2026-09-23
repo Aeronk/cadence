@@ -5,6 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatDate } from '@/lib/dates';
 
 type PersonalEvent = {
     id: number;
@@ -119,7 +120,7 @@ const catPill = (c: string | null) => ({
                             </span>
                         </p>
                         <p class="text-xs text-muted-foreground">
-                            {{ new Date(ev.event_date).toLocaleDateString() }}
+                            {{ formatDate(ev.event_date) }}
                             <span v-if="ev.recurs_yearly"> · every year</span>
                         </p>
                     </div>

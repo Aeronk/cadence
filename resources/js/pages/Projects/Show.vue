@@ -47,6 +47,7 @@ import {
 import projectsRoutes from '@/routes/projects';
 import tasksRoutes from '@/routes/tasks';
 import milestonesRoutes from '@/routes/milestones';
+import { formatDate, formatDateRange, formatDateTime, formatDueDate } from '@/lib/dates';
 
 type Project = {
     id: number;
@@ -753,7 +754,7 @@ function deleteMilestone(m: Milestone) {
                             </label>
 
                             <div class="flex items-center gap-3 text-xs text-muted-foreground">
-                                <span v-if="m.due_date">{{ m.due_date }}</span>
+                                <span v-if="m.due_date">{{ formatDate(m.due_date) }}</span>
                                 <button
                                     title="Delete"
                                     class="opacity-0 transition group-hover:opacity-100"
@@ -819,7 +820,7 @@ function deleteMilestone(m: Milestone) {
                             <Calendar class="h-4 w-4 shrink-0 text-muted-foreground" />
                             <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ m.title }}</span>
                             <span class="shrink-0 text-xs text-muted-foreground">
-                                {{ m.starts_at ? new Date(m.starts_at).toLocaleString() : '' }}
+                                {{ formatDateTime(m.starts_at) }}
                             </span>
                         </a>
                     </div>
@@ -847,7 +848,7 @@ function deleteMilestone(m: Milestone) {
                                 <p class="truncate text-sm font-medium">{{ t.name }}</p>
                                 <p class="text-xs text-muted-foreground">
                                     <span v-if="t.destination">{{ t.destination }} &middot; </span>
-                                    {{ t.departs_at }} → {{ t.returns_at }}
+                                    {{ formatDateRange(t.departs_at, t.returns_at) }}
                                     <span v-if="t.traveller"> &middot; {{ t.traveller }}</span>
                                 </p>
                             </div>
@@ -906,7 +907,7 @@ function deleteMilestone(m: Milestone) {
                                     {{ t.title }}
                                 </span>
                                 <span v-if="t.due_date" class="shrink-0 text-xs text-muted-foreground">
-                                    {{ t.due_date }}
+                                    {{ formatDueDate(t.due_date) }}
                                 </span>
                             </div>
                         </div>

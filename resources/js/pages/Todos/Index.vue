@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
 import todosRoutes from '@/routes/todos';
+import { formatDueDate } from '@/lib/dates';
 
 type Priority = 'low' | 'medium' | 'high';
 
@@ -240,7 +241,7 @@ function remove(todo: Todo) {
                                             : 'bg-muted text-muted-foreground'
                                     "
                                 >
-                                    {{ isOverdue(todo) ? 'Overdue · ' : 'Due ' }}{{ todo.due_date }}
+                                    {{ isOverdue(todo) ? 'Overdue · ' : 'Due ' }}{{ formatDueDate(todo.due_date) }}
                                 </span>
                             </div>
                         </div>

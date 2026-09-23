@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
+import { formatTime } from '@/lib/dates';
 
 type CalendarEvent = {
     id: string;
@@ -62,10 +63,6 @@ function setView(view: 'day' | 'week' | 'month') {
 function today() {
     const t = new Date().toISOString().slice(0, 10);
     go(t, props.view);
-}
-
-function fmtTime(iso: string) {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // ---- Month view (6×7 grid) ----
@@ -252,17 +249,17 @@ const eventClass = (ev: CalendarEvent) => {
                                 v-if="ev.url"
                                 :href="ev.url"
                                 :class="['truncate rounded px-1.5 py-0.5 text-[11px]', eventClass(ev)]"
-                                :title="`${ev.title} — ${fmtTime(ev.starts_at)}`"
+                                :title="`${ev.title} — ${formatTime(ev.starts_at)}`"
                             >
-                                <span class="font-medium">{{ fmtTime(ev.starts_at) }}</span>
+                                <span class="font-medium">{{ formatTime(ev.starts_at) }}</span>
                                 {{ ev.title }}
                             </Link>
                             <div
                                 v-else
                                 :class="['truncate rounded px-1.5 py-0.5 text-[11px]', eventClass(ev)]"
-                                :title="`${ev.title} — ${fmtTime(ev.starts_at)}`"
+                                :title="`${ev.title} — ${formatTime(ev.starts_at)}`"
                             >
-                                <span class="font-medium">{{ fmtTime(ev.starts_at) }}</span>
+                                <span class="font-medium">{{ formatTime(ev.starts_at) }}</span>
                                 {{ ev.title }}
                             </div>
                         </template>
@@ -315,9 +312,9 @@ const eventClass = (ev: CalendarEvent) => {
                             :href="ev.url ?? undefined"
                             :class="['absolute left-1 right-1 rounded px-1.5 py-1 text-[11px] overflow-hidden', eventClass(ev)]"
                             :style="eventSlot(ev)"
-                            :title="`${ev.title} — ${fmtTime(ev.starts_at)}`"
+                            :title="`${ev.title} — ${formatTime(ev.starts_at)}`"
                         >
-                            <div class="font-medium leading-tight">{{ fmtTime(ev.starts_at) }}</div>
+                            <div class="font-medium leading-tight">{{ formatTime(ev.starts_at) }}</div>
                             <div class="truncate">{{ ev.title }}</div>
                         </component>
                     </div>
@@ -348,7 +345,7 @@ const eventClass = (ev: CalendarEvent) => {
                         >
                             <div class="font-semibold">{{ ev.title }}</div>
                             <div class="text-xs opacity-80">
-                                {{ fmtTime(ev.starts_at) }} — {{ fmtTime(ev.ends_at) }}
+                                {{ formatTime(ev.starts_at) }} — {{ formatTime(ev.ends_at) }}
                             </div>
                             <div v-if="ev.meta" class="mt-1 truncate text-xs opacity-80">
                                 {{ ev.meta }}

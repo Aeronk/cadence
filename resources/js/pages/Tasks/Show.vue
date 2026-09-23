@@ -30,6 +30,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import tasksRoutes from '@/routes/tasks';
+import { formatDateRange, formatTime, formatWeekday } from '@/lib/dates';
 
 type Option = { value: string; label: string; color?: string };
 type Named = { id: number; name: string };
@@ -172,20 +173,7 @@ function unlinkTrip() {
     );
 }
 
-const dayLabel = computed(() => {
-    if (!props.day_context.date) return '';
-    const [y, m, d] = props.day_context.date.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-    });
-});
-
-const timeOnly = (iso: string | null) =>
-    iso
-        ? new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-        : '';
+const dayLabel = computed(() => formatWeekday(props.day_context.date));
 
 /** Nothing to show means the whole panel section stays out of the way. */
 const hasDayContext = computed(
@@ -299,15 +287,9 @@ function remove() {
 
 const meetingWhen = computed(() => {
     if (!props.task.meeting) return null;
-    const start = new Date(props.task.meeting.starts_at);
-    const end = new Date(props.task.meeting.ends_at);
-    return `${start.toLocaleString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    })} – ${end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+
+    return `${formatWeekday(props.task.meeting.starts_at)}, `
+        + `${formatTime(props.task.meeting.starts_at)} – ${formatTime(props.task.meeting.ends_at)}`;
 });
 </script>
 
@@ -468,7 +450,7 @@ const meetingWhen = computed(() => {
                             </a>
                             <p class="text-xs text-muted-foreground">
                                 <span v-if="trip.destination">{{ trip.destination }} &middot; </span>
-                                {{ trip.departs_at }} → {{ trip.returns_at }}
+                                {{ formatDateRange(trip.departs_at, trip.returns_at) }}
                             </p>
                         </div>
                         <button
@@ -492,7 +474,7 @@ const meetingWhen = computed(() => {
                                 class="flex items-center gap-2 text-sm"
                             >
                                 <Clock class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span class="tabular-nums text-muted-foreground">{{ timeOnly(m.starts_at) }}</span>
+                                <span class="tabular-nums text-muted-foreground">{{ formatTime(m.starts_at) }}</span>
                                 <a :href="m.url" class="truncate hover:underline">{{ m.title }}</a>
                                 <span v-if="m.location" class="truncate text-xs text-muted-foreground">
                                     &middot; {{ m.location }}

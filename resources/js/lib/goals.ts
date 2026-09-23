@@ -1,3 +1,7 @@
+// Dates are formatted in one place for the whole app; re-exported here so the
+// goals pages can keep importing what they already import.
+export { formatDate } from '@/lib/dates';
+
 /**
  * Shared shapes and presentation for goals, so the index, the row and the
  * detail page cannot drift into describing the same goal three different ways.
@@ -119,15 +123,3 @@ export function buildTree(goals: Goal[]): GoalNode[] {
     return roots;
 }
 
-export function formatDate(iso: string | null): string {
-    if (!iso) return '';
-    // Parsed as a plain date: a bare YYYY-MM-DD run through the Date
-    // constructor is read as UTC and can render as the day before.
-    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
-    if (!y || !m || !d) return iso;
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    });
-}

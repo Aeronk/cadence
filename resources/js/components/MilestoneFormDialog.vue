@@ -36,8 +36,9 @@ const form = useForm({
     title: '',
     description: '',
     due_date: '',
-    // Null hands progress to the task count; a number pins it.
-    manual_progress: null as number | null,
+    // `track_manually` decides whether this is sent at all; null goes on the
+    // wire, but the number input itself always holds a number.
+    manual_progress: 0,
     track_manually: true,
 });
 

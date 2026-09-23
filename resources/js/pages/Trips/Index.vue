@@ -15,6 +15,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import ProjectSelect, { type ProjectOption } from '@/components/ProjectSelect.vue';
+import { formatDateRange } from '@/lib/dates';
 
 type Trip = {
     id: number;
@@ -164,8 +165,7 @@ const statusPill = (s: string) => ({
                         </span>
                     </div>
                     <div class="mt-4 text-xs text-muted-foreground">
-                        {{ new Date(trip.departs_at).toLocaleDateString() }} →
-                        {{ new Date(trip.returns_at).toLocaleDateString() }}
+                        {{ formatDateRange(trip.departs_at, trip.returns_at) }}
                     </div>
                 </Link>
             </div>

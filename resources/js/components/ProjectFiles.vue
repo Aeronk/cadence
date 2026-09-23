@@ -10,6 +10,7 @@ import {
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/dates';
 
 type ProjectFile = {
     id: number;
@@ -135,7 +136,7 @@ function remove(file: ProjectFile) {
                     {{ file.uploader?.name ?? '—' }}
                 </div>
                 <div class="hidden text-xs text-muted-foreground md:block">
-                    {{ new Date(file.created_at).toLocaleDateString() }}
+                    {{ formatDate(file.created_at) }}
                 </div>
                 <button
                     v-if="canManage || file.uploaded_by === currentUserId"

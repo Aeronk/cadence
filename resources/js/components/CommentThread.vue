@@ -5,6 +5,7 @@ import { ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { useChannel } from '@/composables/useChannel';
 import comments from '@/routes/comments';
+import { formatRelative } from '@/lib/dates';
 
 type Comment = {
     id: number;
@@ -69,7 +70,7 @@ useChannel<{ comment: Comment & { commentable_type: string; commentable_id: numb
                 <div class="flex items-center justify-between text-xs text-muted-foreground">
                     <span class="font-medium text-foreground">{{ c.user.name }}</span>
                     <div class="flex items-center gap-2">
-                        <span>{{ new Date(c.created_at).toLocaleString() }}</span>
+                        <span>{{ formatRelative(c.created_at) }}</span>
                         <button
                             v-if="c.user.id === currentUserId"
                             @click="remove(c)"

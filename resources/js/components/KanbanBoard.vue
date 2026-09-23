@@ -3,6 +3,7 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import { Flag, Plus, X } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
+import { formatDueDate } from '@/lib/dates';
 
 type Status = { id: number; name: string; color: string; position: number; is_completed: boolean };
 type Priority = { id: number; name: string; color: string; level: number };
@@ -161,7 +162,7 @@ function submitAdd(e?: Event) {
                         />
                     </div>
                     <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                        <span v-if="task.due_date">{{ task.due_date }}</span>
+                        <span v-if="task.due_date">{{ formatDueDate(task.due_date) }}</span>
                         <div v-if="task.assignees.length" class="flex -space-x-1">
                             <span
                                 v-for="a in task.assignees.slice(0, 3)"

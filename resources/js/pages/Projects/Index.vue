@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewMode } from '@/composables/useViewMode';
 import projectsRoutes from '@/routes/projects';
+import { formatDate, formatDueDate } from '@/lib/dates';
 
 type Project = {
     id: number;
@@ -426,7 +427,7 @@ function submit() {
                             </span>
                         </div>
                         <p v-if="project.due_date" class="mt-2 text-xs text-muted-foreground">
-                            Due {{ new Date(project.due_date).toLocaleDateString() }}
+                            Due {{ formatDueDate(project.due_date) }}
                         </p>
                     </div>
                 </Link>
@@ -497,7 +498,7 @@ function submit() {
                                 </div>
                             </td>
                             <td class="px-4 py-2 text-xs text-muted-foreground">
-                                {{ project.due_date ? new Date(project.due_date).toLocaleDateString() : '—' }}
+                                {{ formatDate(project.due_date) || '—' }}
                             </td>
                             <td class="px-4 py-2">
                                 <div class="flex items-center justify-end gap-2">

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import RichEditor from '@/components/RichEditor.vue';
 import workspaceRoutes from '@/routes/workspace';
+import { formatDate } from '@/lib/dates';
 
 type Member = {
     id: number;
@@ -91,14 +92,6 @@ function revokeInvitation(invitation: Invitation) {
         `/settings/workspace/${props.workspace.id}/invitations/${invitation.id}`,
         { preserveScroll: true },
     );
-}
-
-function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
 }
 
 function setRole(member: Member, role: string) {

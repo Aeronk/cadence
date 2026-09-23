@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { Sparkles, RotateCw, CalendarClock, AlertTriangle, Briefcase, Plane } from 'lucide-vue-next';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
+import { formatDate, formatTime } from '@/lib/dates';
 
 type Briefing = {
     id: number;
@@ -78,7 +79,7 @@ function regenerate() {
                     </header>
                     <ul class="space-y-1 text-sm">
                         <li v-for="m in briefing.payload.meetings_today" :key="m.id" class="truncate">
-                            · {{ m.starts_at }} — {{ m.title }}
+                            · {{ formatTime(m.starts_at) }} — {{ m.title }}
                         </li>
                         <li v-if="!briefing.payload.meetings_today.length" class="text-xs text-muted-foreground">Open calendar.</li>
                     </ul>
@@ -101,7 +102,7 @@ function regenerate() {
                     :key="r.id"
                     class="border-b px-4 py-3 last:border-b-0"
                 >
-                    <p class="text-xs text-muted-foreground">{{ r.briefing_date }}</p>
+                    <p class="text-xs text-muted-foreground">{{ formatDate(r.briefing_date) }}</p>
                     <p class="line-clamp-2 text-sm">{{ r.summary }}</p>
                 </div>
             </section>

@@ -6,6 +6,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { getEcho } from '@/lib/echo';
 import notificationsRoutes from '@/routes/notifications';
+import { formatDateTime, formatRelative } from '@/lib/dates';
 
 type AppNotification = {
     id: string;
@@ -97,7 +98,7 @@ onBeforeUnmount(() => {
                 <div class="rounded-lg border bg-card p-3">
                     <p class="text-xs text-muted-foreground">Last received</p>
                     <p class="text-sm">
-                        {{ diagnostics.last_at ? new Date(diagnostics.last_at).toLocaleString() : 'Never' }}
+                        {{ formatDateTime(diagnostics.last_at) || 'Never' }}
                     </p>
                 </div>
                 <div class="rounded-lg border bg-card p-3">
@@ -137,7 +138,7 @@ onBeforeUnmount(() => {
                     <div>
                         <p class="text-sm font-medium">{{ n.data.task_title ?? n.data.meeting_title ?? n.type }}</p>
                         <p class="mt-1 text-xs text-muted-foreground">
-                            {{ new Date(n.created_at).toLocaleString() }}
+                            {{ formatRelative(n.created_at) }}
                         </p>
                     </div>
                     <button

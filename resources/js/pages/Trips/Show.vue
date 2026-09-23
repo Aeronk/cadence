@@ -6,6 +6,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatDateRange, formatDateTime } from '@/lib/dates';
 
 type Segment = {
     id: number;
@@ -110,8 +111,7 @@ const tripDelete = () => {
                         {{ trip.destination_city ?? '—' }}
                         <span v-if="trip.destination_country">· {{ trip.destination_country }}</span>
                         ·
-                        {{ new Date(trip.departs_at).toLocaleDateString() }} →
-                        {{ new Date(trip.returns_at).toLocaleDateString() }}
+                        {{ formatDateRange(trip.departs_at, trip.returns_at) }}
                     </p>
                 </div>
                 <Button variant="outline" size="sm" class="text-destructive" @click="tripDelete">
@@ -197,8 +197,8 @@ const tripDelete = () => {
                                 </span>
                             </p>
                             <p class="text-xs text-muted-foreground">
-                                {{ new Date(seg.starts_at).toLocaleString() }}
-                                <span v-if="seg.ends_at"> — {{ new Date(seg.ends_at).toLocaleString() }}</span>
+                                {{ formatDateTime(seg.starts_at) }}
+                                <span v-if="seg.ends_at"> — {{ formatDateTime(seg.ends_at) }}</span>
                             </p>
                             <p v-if="seg.details" class="mt-1 text-xs text-muted-foreground">{{ seg.details }}</p>
                         </div>

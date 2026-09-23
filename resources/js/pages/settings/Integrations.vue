@@ -14,6 +14,7 @@ import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import integrations from '@/routes/integrations';
+import { formatRelative } from '@/lib/dates';
 
 type CalendarSource = {
     id: number;
@@ -92,7 +93,6 @@ function makeWriteTarget(source: CalendarSource) {
     );
 }
 
-const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : null);
 </script>
 
 <template>
@@ -133,7 +133,7 @@ const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString()
                                         {{ account.last_error }}
                                     </p>
                                     <p v-if="account.last_synced_at" class="text-xs text-muted-foreground">
-                                        Last synced {{ formatTime(account.last_synced_at) }}
+                                        Last synced {{ formatRelative(account.last_synced_at) }}
                                     </p>
                                 </div>
                             </div>
@@ -185,7 +185,7 @@ const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString()
                                                 New meetings are created here
                                             </span>
                                             <span v-else-if="cal.last_synced_at">
-                                                Synced {{ formatTime(cal.last_synced_at) }}
+                                                Synced {{ formatRelative(cal.last_synced_at) }}
                                             </span>
                                             <span v-else>Not synced yet</span>
                                         </p>

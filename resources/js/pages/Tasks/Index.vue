@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewMode } from '@/composables/useViewMode';
 import tasksRoutes from '@/routes/tasks';
+import { formatDate, formatDueDate } from '@/lib/dates';
 
 type Task = {
     id: number;
@@ -463,7 +464,7 @@ function submit() {
                         :class="isOverdue(task) ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'"
                     >
                         {{ isOverdue(task) ? 'Overdue · ' : 'Due ' }}
-                        {{ new Date(task.due_date).toLocaleDateString() }}
+                        {{ formatDueDate(task.due_date) }}
                     </div>
                 </Link>
             </div>
@@ -525,7 +526,7 @@ function submit() {
                                 <span v-if="!task.assignees.length" class="text-muted-foreground">—</span>
                             </td>
                             <td class="px-4 py-2 text-xs text-muted-foreground">
-                                {{ task.due_date ? new Date(task.due_date).toLocaleDateString() : '—' }}
+                                {{ formatDate(task.due_date) || '—' }}
                             </td>
                             <td class="px-4 py-2">
                                 <div class="flex items-center justify-end gap-2">
