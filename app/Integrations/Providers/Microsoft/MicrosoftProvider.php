@@ -6,6 +6,7 @@ use App\Enums\MessageChannel;
 use App\Integrations\Contracts\CalendarProvider;
 use App\Integrations\Contracts\EmailProvider;
 use App\Integrations\Contracts\OAuthProvider;
+use App\Integrations\SyncErrorMessage;
 use App\Models\CalendarEvent;
 use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
@@ -267,7 +268,9 @@ class MicrosoftProvider implements CalendarProvider, EmailProvider, OAuthProvide
                 $persisted += $this->pullEvents($account, $source);
             } catch (RequestException $e) {
                 $source->forceFill([
-                    'last_error' => Str::limit($e->getMessage(), 1000),
+                    'last_error' => SyncErrorMessage::describe($e, [
+                        'calendar_source_id' => $source->id,
+                    ]),
                 ])->save();
             }
         }

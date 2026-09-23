@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Http\Controllers\Controller;
 use App\Integrations\IntegrationManager;
+use App\Integrations\SyncErrorMessage;
 use App\Jobs\SyncIntegrationAccountCalendar;
 use App\Models\CalendarSource;
 use App\Models\IntegrationAccount;
@@ -36,9 +37,10 @@ class CalendarSourceController extends Controller
             $calendars = $provider->syncCalendarList($account);
             $events = $provider->syncEvents($account);
         } catch (Throwable $e) {
-            $account->forceFill(['last_error' => $e->getMessage()])->save();
+            $message = SyncErrorMessage::describe($e, ['account_id' => $account->id]);
+            $account->forceFill(['last_error' => $message])->save();
 
-            return back()->with('flash.error', 'Could not sync your calendars: '.$e->getMessage());
+            return back()->with('flash.error', $message);
         }
 
         $account->forceFill(['last_error' => null])->save();

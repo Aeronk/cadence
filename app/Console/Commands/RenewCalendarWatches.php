@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\IntegrationProvider;
 use App\Integrations\IntegrationManager;
+use App\Integrations\SyncErrorMessage;
 use App\Models\CalendarSource;
 use Illuminate\Console\Command;
 use Throwable;
@@ -64,7 +65,9 @@ class RenewCalendarWatches extends Command
                 $renewed++;
             } catch (Throwable $e) {
                 // One calendar's revoked access must not stop the rest renewing.
-                $source->forceFill(['last_error' => $e->getMessage()])->save();
+                $source->forceFill([
+                    'last_error' => SyncErrorMessage::describe($e, ['calendar_source_id' => $source->id]),
+                ])->save();
                 $this->warn("Calendar {$source->name} (#{$source->id}): {$e->getMessage()}");
                 $failed++;
             }

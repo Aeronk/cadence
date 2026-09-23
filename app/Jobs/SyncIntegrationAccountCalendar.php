@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Integrations\IntegrationManager;
+use App\Integrations\SyncErrorMessage;
 use App\Models\IntegrationAccount;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -46,7 +47,9 @@ class SyncIntegrationAccountCalendar implements ShouldQueue
 
             $provider->syncEvents($account);
         } catch (Throwable $e) {
-            $account->forceFill(['last_error' => $e->getMessage()])->save();
+            $account->forceFill([
+                'last_error' => SyncErrorMessage::describe($e, ['account_id' => $account->id]),
+            ])->save();
             throw $e;
         }
     }
